@@ -1,0 +1,34 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.env
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# Benchmark artifacts (local only)
+artifacts/*.json
+artifacts/*.md
+!artifacts/README.md
+backups/
+
+# Databases (adjust if some should be committed)
+*.sqlite
+*.db
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node / frontend (if added later)
+node_modules/
+
