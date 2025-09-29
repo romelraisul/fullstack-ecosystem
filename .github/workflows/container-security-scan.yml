@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "17 2 * * *" # Nightly at 02:17 UTC (spread load)
   workflow_dispatch: {}
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'security/**'
+      - '.github/workflows/container-security-scan.yml'
 
 permissions:
   contents: read
@@ -46,12 +51,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Capture PR labels (if PR)
-        if: ${{ github.event_name == 'pull_request' }}
-        id: prlabels
-        run: |
-          echo "labels=${{ toJson(github.event.pull_request.labels.*.name) }}" >> $GITHUB_OUTPUT
-          echo "PR labels: ${{ toJson(github.event.pull_request.labels.*.name) }}"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
@@ -102,17 +101,26 @@ jobs:
         run: |
           python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json
         continue-on-error: false
-      - name: (Optional) Update Baseline (label + protected branch gated)
-        if: >-
-          ${{ github.event_name == 'pull_request' &&
-              contains(join(github.event.pull_request.labels.*.name, ','), 'security-baseline-update') &&
-              (github.base_ref == 'main' || github.base_ref == 'master') }}
+      - name: Evaluate Baseline Update Eligibility
+        id: gate
+        if: ${{ github.event_name == 'pull_request' }}
         run: |
-          echo "Authorized baseline update (label present + protected branch target)."
+          echo "PR #${{ github.event.pull_request.number }} labels:"
+          echo "${{ toJson(github.event.pull_request.labels) }}"
+          # Extract labels into a simple newline list and look for 'security-baseline-update'
+          echo "${{ toJson(github.event.pull_request.labels) }}" | jq -r '.[].name' > pr_labels.txt
+          if grep -qi '^security-baseline-update$' pr_labels.txt; then
+            echo "eligible=true" >> $GITHUB_OUTPUT
+            echo "Baseline update label present."; else
+            echo "eligible=false" >> $GITHUB_OUTPUT
+            echo "Baseline update label NOT present; baseline will not be modified."; fi
+      - name: Update Baseline (Label-Gated)
+        if: ${{ github.event_name == 'pull_request' && steps.gate.outputs.eligible == 'true' && (github.base_ref == 'main' || github.base_ref == 'master') }}
+        run: |
+          echo "Label gate passed; updating baseline file." 
           python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json --update-baseline
-          echo "NOTE: Ensure PR includes justification for baseline change."
-      - name: Baseline Update Not Allowed Summary
-        if: >-
-          ${{ github.event_name == 'pull_request' && !contains(join(github.event.pull_request.labels.*.name, ','), 'security-baseline-update') }}
+          echo "NOTE: Ensure this PR includes justification for baseline change." 
+      - name: Warn Baseline Not Updated
+        if: ${{ github.event_name == 'pull_request' && steps.gate.outputs.eligible == 'false' }}
         run: |
-          echo "Baseline update skipped: missing 'security-baseline-update' label." >> $GITHUB_STEP_SUMMARY
+          echo "Baseline not updated (missing 'security-baseline-update' label). If intentional drift acceptance is required, add the label and re-run." 
