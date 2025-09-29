@@ -1,0 +1,118 @@
+name: Container Security Scan
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # Nightly at 02:17 UTC (spread load)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy-fs:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run Trivy FS (SARIF)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: "fs"
+          ignore-unfixed: true
+          format: "sarif"
+          output: "trivy-fs.sarif"
+          severity: "CRITICAL,HIGH"
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  build-and-scan:
+    name: Build & Scan Key Images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile:
+          - Dockerfile.orchestrator
+          - Dockerfile.smoke
+          - autogen/backend/Dockerfile.fast
+          - autogen/backend/Dockerfile.prod
+          - autogen/backend/Dockerfile.production
+          - autogen/Dockerfile.topics
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture PR labels (if PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        id: prlabels
+        run: |
+          echo "labels=${{ toJson(github.event.pull_request.labels.*.name) }}" >> $GITHUB_OUTPUT
+          echo "PR labels: ${{ toJson(github.event.pull_request.labels.*.name) }}"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        run: |
+          IMAGE=localscan:${{ matrix.dockerfile//\//- }}
+          docker build --build-arg GIT_COMMIT=${{ github.sha }} --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -f ${{ matrix.dockerfile }} -t $IMAGE . || exit 1
+          echo "IMAGE_NAME=$IMAGE" >> $GITHUB_ENV
+          echo "IMAGE_SLUG=${{ matrix.dockerfile//\//- }}" >> $GITHUB_ENV
+      - name: Trivy Image Scan (table)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+      - name: Trivy Image Scan (SARIF)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: "sarif"
+          output: trivy-image.sarif
+          ignore-unfixed: true
+          severity: "CRITICAL,HIGH"
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --format cyclonedx --output sbom-${IMAGE_SLUG}.cdx.json "$IMAGE_NAME" || true
+      - name: Generate SBOM (SPDX JSON)
+        run: |
+          if command -v trivy >/dev/null 2>&1; then
+            trivy image --format spdx-json --output sbom-${IMAGE_SLUG}.spdx.json "$IMAGE_NAME" || true
+          fi
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ env.IMAGE_SLUG }}
+          path: |
+            sbom-${{ env.IMAGE_SLUG }}.cdx.json
+            sbom-${{ env.IMAGE_SLUG }}.spdx.json
+          if-no-files-found: warn
+      - name: Baseline Drift Check (CRITICAL only)
+        run: |
+          python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json
+        continue-on-error: false
+      - name: (Optional) Update Baseline (label + protected branch gated)
+        if: >-
+          ${{ github.event_name == 'pull_request' &&
+              contains(join(github.event.pull_request.labels.*.name, ','), 'security-baseline-update') &&
+              (github.base_ref == 'main' || github.base_ref == 'master') }}
+        run: |
+          echo "Authorized baseline update (label present + protected branch target)."
+          python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json --update-baseline
+          echo "NOTE: Ensure PR includes justification for baseline change."
+      - name: Baseline Update Not Allowed Summary
+        if: >-
+          ${{ github.event_name == 'pull_request' && !contains(join(github.event.pull_request.labels.*.name, ','), 'security-baseline-update') }}
+        run: |
+          echo "Baseline update skipped: missing 'security-baseline-update' label." >> $GITHUB_STEP_SUMMARY
