@@ -142,10 +142,37 @@ jobs:
           set -e
           mkdir -p metrics-history/actionlint
           TS=$(date -u +%Y%m%dT%H%M%SZ)
+          # Determine previous snapshot (excluding badge/actionlint delta badges)
+          PREV_FILE=$(ls -1 metrics-history/actionlint/*.json 2>/dev/null | grep -v badge-actionlint.json | grep -v badge-actionlint-errors-delta.json | grep -v badge-actionlint-rules.json | grep -v badge-actionlint-warnings.json | grep -v badge-actionlint-rules-delta.json | grep -v badge-actionlint-warnings-delta.json | grep -v badge-actionlint-errors.json | grep -v badge-actionlint-summary.json | sort | tail -n 1 || true)
+          if [ -n "$PREV_FILE" ]; then
+            echo "Previous snapshot: $PREV_FILE"
+            # Compute deltas
+            PREV_ERRORS=$(jq -r '.errors' "$PREV_FILE" 2>/dev/null || echo 0)
+            PREV_WARNINGS=$(jq -r '.warnings' "$PREV_FILE" 2>/dev/null || echo 0)
+            PREV_RULES=$(jq -r '.rules' "$PREV_FILE" 2>/dev/null || echo 0)
+            CUR_ERRORS=$(jq -r '.errors' actionlint-metrics.json)
+            CUR_WARNINGS=$(jq -r '.warnings' actionlint-metrics.json)
+            CUR_RULES=$(jq -r '.rules' actionlint-metrics.json)
+            DELTA_ERRORS=$((CUR_ERRORS-PREV_ERRORS))
+            DELTA_WARNINGS=$((CUR_WARNINGS-PREV_WARNINGS))
+            DELTA_RULES=$((CUR_RULES-PREV_RULES))
+            jq '. + {errors_delta:'"$DELTA_ERRORS"', warnings_delta:'"$DELTA_WARNINGS"', rules_delta:'"$DELTA_RULES"'}' actionlint-metrics.json > actionlint-metrics-with-delta.json
+            mv actionlint-metrics-with-delta.json actionlint-metrics.json
+          else
+            echo "No previous snapshot; initializing deltas to 0"
+            jq '. + {errors_delta:0, warnings_delta:0, rules_delta:0}' actionlint-metrics.json > actionlint-metrics-with-delta.json
+            mv actionlint-metrics-with-delta.json actionlint-metrics.json
+          fi
           cp actionlint-metrics.json metrics-history/actionlint/${TS}.json
           # Lightweight rolling index
           jq -s 'sort_by(.timestamp) | map(. )' <(jq '. + {"timestamp":"'"$TS"'"}' actionlint-metrics.json) >/dev/null 2>&1 || true
           echo "Saved metrics snapshot ${TS}.json"
+          # Purge old snapshots keeping last 200 chronologically
+          COUNT=$(ls -1 metrics-history/actionlint/*.json 2>/dev/null | wc -l || echo 0)
+          if [ "$COUNT" -gt 200 ]; then
+            ls -1 metrics-history/actionlint/*.json | sort | head -n -200 | xargs -r git rm -f || true
+            echo "Purged old snapshots, retaining last 200"
+          fi
         shell: bash
 
       - name: Generate badge (main branch)
@@ -154,12 +181,41 @@ jobs:
         run: |
           set -e
           ERRORS=$(jq -r '.errors' actionlint-metrics.json)
+          WARNINGS=$(jq -r '.warnings' actionlint-metrics.json)
+          RULES=$(jq -r '.rules' actionlint-metrics.json)
+          ERRORS_DELTA=$(jq -r '.errors_delta' actionlint-metrics.json 2>/dev/null || echo 0)
+          WARNINGS_DELTA=$(jq -r '.warnings_delta' actionlint-metrics.json 2>/dev/null || echo 0)
+          RULES_DELTA=$(jq -r '.rules_delta' actionlint-metrics.json 2>/dev/null || echo 0)
             COLOR=brightgreen
           if [ "$ERRORS" -gt 0 ]; then
             COLOR=red
           fi
           mkdir -p metrics-history/actionlint
           echo "{\"schemaVersion\":1,\"label\":\"actionlint\",\"message\":\"errors ${ERRORS}\",\"color\":\"${COLOR}\"}" > metrics-history/actionlint/badge-actionlint.json
+          # Additional badges
+          # Errors delta badge
+          DELTA_COLOR=lightgrey
+          if [ "$ERRORS_DELTA" -gt 0 ]; then DELTA_COLOR=red; elif [ "$ERRORS_DELTA" -lt 0 ]; then DELTA_COLOR=brightgreen; fi
+          echo "{\"schemaVersion\":1,\"label\":\"errors Δ\",\"message\":\"${ERRORS_DELTA}\",\"color\":\"${DELTA_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-errors-delta.json
+          # Warnings total
+          WARN_COLOR=blue
+          if [ "$WARNINGS" -gt 50 ]; then WARN_COLOR=orange; fi
+          if [ "$WARNINGS" -gt 100 ]; then WARN_COLOR=red; fi
+          echo "{\"schemaVersion\":1,\"label\":\"warnings\",\"message\":\"${WARNINGS}\",\"color\":\"${WARN_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-warnings.json
+          # Warnings delta
+          WDELTA_COLOR=lightgrey
+          if [ "$WARNINGS_DELTA" -gt 0 ]; then WDELTA_COLOR=orange; elif [ "$WARNINGS_DELTA" -lt 0 ]; then WDELTA_COLOR=brightgreen; fi
+          echo "{\"schemaVersion\":1,\"label\":\"warnings Δ\",\"message\":\"${WARNINGS_DELTA}\",\"color\":\"${WDELTA_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-warnings-delta.json
+          # Rules total
+          RULES_COLOR=blue
+          echo "{\"schemaVersion\":1,\"label\":\"rules\",\"message\":\"${RULES}\",\"color\":\"${RULES_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-rules.json
+            RDELTA_COLOR=lightgrey
+          if [ "$RULES_DELTA" -gt 0 ]; then RDELTA_COLOR=blue; elif [ "$RULES_DELTA" -lt 0 ]; then RDELTA_COLOR=lightgrey; fi
+          echo "{\"schemaVersion\":1,\"label\":\"rules Δ\",\"message\":\"${RULES_DELTA}\",\"color\":\"${RDELTA_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-rules-delta.json
+          # Summary badge (errors|warnings)
+          SUMMARY_COLOR=${COLOR}
+          if [ "$ERRORS" -eq 0 ] && [ "$WARNINGS" -eq 0 ]; then SUMMARY_COLOR=brightgreen; elif [ "$ERRORS" -eq 0 ]; then SUMMARY_COLOR=yellow; fi
+          echo "{\"schemaVersion\":1,\"label\":\"actionlint summary\",\"message\":\"E:${ERRORS} W:${WARNINGS}\",\"color\":\"${SUMMARY_COLOR}\"}" > metrics-history/actionlint/badge-actionlint-summary.json
 
       - name: Commit history and badge
         if: matrix.os == 'ubuntu-latest' && inputs.persist-history == true && github.ref == 'refs/heads/main'

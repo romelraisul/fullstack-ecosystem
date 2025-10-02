@@ -4,20 +4,33 @@ This directory stores timestamped JSON snapshots of actionlint metrics generated
 
 File naming: `YYYYMMDDTHHMMSSZ.json`
 
-Each file shape:
+Each file shape (post delta enhancement):
 
 ```json
 {
   "results": <int>,
   "errors": <int>,
   "warnings": <int>,
-  "rules": <int>
+  "rules": <int>,
+  "errors_delta": <int>,
+  "warnings_delta": <int>,
+  "rules_delta": <int>
 }
 ```
 
-Badge JSON: `badge-actionlint.json` (Shields.io compatible schemaVersion=1)
+Badge JSON files (all Shields.io compatible `schemaVersion=1`):
 
-Example badge URL after pushing to default branch and enabling GitHub Pages (if using pages):
+| File | Label | Meaning |
+|------|-------|---------|
+| `badge-actionlint.json` | actionlint | Error count (primary) |
+| `badge-actionlint-errors-delta.json` | errors Δ | Change in errors vs previous snapshot |
+| `badge-actionlint-warnings.json` | warnings | Total warnings |
+| `badge-actionlint-warnings-delta.json` | warnings Δ | Change in warnings |
+| `badge-actionlint-rules.json` | rules | Total distinct rules reported |
+| `badge-actionlint-rules-delta.json` | rules Δ | Change in rule count |
+| `badge-actionlint-summary.json` | actionlint summary | Combined E:x W:y summary |
+
+Example badge URLs after pushing to default branch:
 
 ```text
 https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint.json
@@ -26,5 +39,11 @@ https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-h
 You can embed with:
 
 ```markdown
-![Actionlint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint.json)
+![Actionlint Errors](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint.json)
+![Errors Δ](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-errors-delta.json)
+![Warnings](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-warnings.json)
+![Warnings Δ](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-warnings-delta.json)
+![Rules](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-rules.json)
+![Rules Δ](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-rules-delta.json)
+![Summary](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/romelraisul/fullstack-ecosystem/main/metrics-history/actionlint/badge-actionlint-summary.json)
 ```

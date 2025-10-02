@@ -1,102 +1,105 @@
 name: Publish Actionlint Metrics
 
 on:
-  workflow_dispatch: {}
-  schedule:
-    - cron: '15 5 * * *'
+    workflow_dispatch: {}
+    schedule:
+        - cron: "15 5 * * *"
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+    contents: write
+    pages: write
+    id-token: write
 
 jobs:
-  build-and-publish:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    build-and-publish:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
-      - name: Collect snapshots
-        id: collect
-        run: |
-          set -e
-          mkdir -p metrics-history/actionlint
-          SNAP_DIR=metrics-history/actionlint
-          ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json || true
-          COUNT=$(ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json | wc -l || echo 0)
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
+            - name: Collect snapshots
+              id: collect
+              run: |
+                  set -e
+                  mkdir -p metrics-history/actionlint
+                  SNAP_DIR=metrics-history/actionlint
+                  ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json || true
+                  COUNT=$(ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json | wc -l || echo 0)
+                  echo "count=$COUNT" >> $GITHUB_OUTPUT
 
-      - name: Build aggregated JSON & CSV
-        run: |
-          set -e
-          SNAP_DIR=metrics-history/actionlint
-          OUT_DIR=public/actionlint
-          mkdir -p "$OUT_DIR"
-          snaps=$(ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json || true)
-          echo '[' > $OUT_DIR/history.json
-          first=1
-          for f in $snaps; do
-            base=$(basename "$f")
-            if [[ "$base" == badge-actionlint.json ]]; then continue; fi
-            ts=${base%.json}
-            if [[ $first -eq 0 ]]; then echo ',' >> $OUT_DIR/history.json; fi
-            jq ". + {timestamp: \"$ts\"}" "$f" >> $OUT_DIR/history.json
-            first=0
-          done
-          echo ']' >> $OUT_DIR/history.json
-          # CSV
-          echo 'timestamp,results,errors,warnings,rules' > $OUT_DIR/history.csv
-          jq -r '.[] | [.timestamp, .results, .errors, .warnings, .rules] | @csv' $OUT_DIR/history.json >> $OUT_DIR/history.csv
-          cp $SNAP_DIR/badge-actionlint.json $OUT_DIR/ 2>/dev/null || true
+            - name: Build aggregated JSON & CSV
+              run: |
+                  set -e
+                  SNAP_DIR=metrics-history/actionlint
+                  OUT_DIR=public/actionlint
+                  mkdir -p "$OUT_DIR"
+                  snaps=$(ls -1 $SNAP_DIR/*.json 2>/dev/null | grep -v badge-actionlint.json || true)
+                  echo '[' > $OUT_DIR/history.json
+                  first=1
+                  for f in $snaps; do
+                    base=$(basename "$f")
+                    if [[ "$base" == badge-actionlint.json ]]; then continue; fi
+                    ts=${base%.json}
+                    if [[ $first -eq 0 ]]; then echo ',' >> $OUT_DIR/history.json; fi
+                    jq ". + {timestamp: \"$ts\"}" "$f" >> $OUT_DIR/history.json
+                    first=0
+                  done
+                  echo ']' >> $OUT_DIR/history.json
+                  # CSV (include deltas if present; default 0)
+                  echo 'timestamp,results,errors,warnings,rules,errors_delta,warnings_delta,rules_delta' > $OUT_DIR/history.csv
+                  jq -r '.[] | [ .timestamp, (.results//0), (.errors//0), (.warnings//0), (.rules//0), (.errors_delta//0), (.warnings_delta//0), (.rules_delta//0) ] | @csv' $OUT_DIR/history.json >> $OUT_DIR/history.csv
+                  # Copy badges (wildcard)
+                  cp $SNAP_DIR/badge-actionlint*.json $OUT_DIR/ 2>/dev/null || true
 
-      - name: Generate HTML dashboard
-        run: |
-          OUT_DIR=public/actionlint
-          mkdir -p "$OUT_DIR"
-          HTML_FILE="$OUT_DIR/index.html"
-          {
-            echo '<!DOCTYPE html>'
-            echo '<html lang="en">'
-            echo '<head>'
-            echo '  <meta charset="UTF-8" />'
-            echo '  <title>Actionlint Metrics</title>'
-            echo '  <style>'
-            echo '    body { font-family: Arial, sans-serif; margin: 2rem; }'
-            echo '    table { border-collapse: collapse; width: 100%; }'
-            echo '    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: right; }'
-            echo '    th { background: #f5f5f5; }'
-            echo '    .err { color: #b30000; font-weight: bold; }'
-            echo '  </style>'
-            echo '</head>'
-            echo '<body>'
-            echo '  <h1>Actionlint Metrics History</h1>'
-            echo '  <p>Latest badge: <img src="badge-actionlint.json" alt="badge" /></p>'
-            echo '  <table id="metrics"><thead><tr><th>Timestamp</th><th>Results</th><th>Errors</th><th>Warnings</th><th>Rules</th></tr></thead><tbody></tbody></table>'
-            echo '  <script>'
-            echo '    fetch("history.json").then(r=>r.json()).then(data=>{' 
-            echo '      const tbody=document.querySelector("#metrics tbody");'
-            echo '      data.sort((a,b)=> a.timestamp.localeCompare(b.timestamp));'
-            echo '      data.forEach(row=>{' 
-            echo '        const tr=document.createElement("tr");'
-            echo '        tr.innerHTML=`<td style="text-align:left">${row.timestamp}</td><td>${row.results}</td><td class="${row.errors>0?"err":""}">${row.errors}</td><td>${row.warnings}</td><td>${row.rules}</td>`;'
-            echo '        tbody.appendChild(tr);'
-            echo '      });'
-            echo '    });'
-            echo '  </script>'
-            echo '</body>'
-            echo '</html>'
-          } > "$HTML_FILE"
+            - name: Generate HTML dashboard
+              run: |
+                  OUT_DIR=public/actionlint
+                  mkdir -p "$OUT_DIR"
+                  HTML_FILE="$OUT_DIR/index.html"
+                  {
+                    echo '<!DOCTYPE html>'
+                    echo '<html lang="en">'
+                    echo '<head>'
+                    echo '  <meta charset="UTF-8" />'
+                    echo '  <title>Actionlint Metrics</title>'
+                    echo '  <style>'
+                    echo '    body { font-family: Arial, sans-serif; margin: 2rem; }'
+                    echo '    table { border-collapse: collapse; width: 100%; }'
+                    echo '    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: right; }'
+                    echo '    th { background: #f5f5f5; }'
+                    echo '    .err { color: #b30000; font-weight: bold; }'
+                    echo '  </style>'
+                    echo '</head>'
+                    echo '<body>'
+                    echo '  <h1>Actionlint Metrics History</h1>'
+                    echo '  <p>Latest badge: <img src="badge-actionlint.json" alt="badge" /></p>'
+                    echo '  <table id="metrics"><thead><tr><th>Timestamp</th><th>Results</th><th>Errors</th><th>Errors Δ</th><th>Warnings</th><th>Warnings Δ</th><th>Rules</th><th>Rules Δ</th></tr></thead><tbody></tbody></table>'
+                    echo '  <script>'
+                    echo '    fetch("history.json").then(r=>r.json()).then(data=>{' 
+                    echo '      const tbody=document.querySelector("#metrics tbody");'
+                    echo '      data.sort((a,b)=> a.timestamp.localeCompare(b.timestamp));'
+                    echo '      function fmtDelta(v){ if(v>0) return "+"+v; return v; }'
+                    echo '      data.forEach(row=>{' 
+                    echo '        const tr=document.createElement("tr");'
+                    echo '        const ed=row.errors_delta ?? 0; const wd=row.warnings_delta ?? 0; const rd=row.rules_delta ?? 0;'
+                    echo '        tr.innerHTML=`<td style="text-align:left">${row.timestamp}</td><td>${row.results??0}</td><td class="${row.errors>0?"err":""}">${row.errors??0}</td><td>${fmtDelta(ed)}</td><td>${row.warnings??0}</td><td>${fmtDelta(wd)}</td><td>${row.rules??0}</td><td>${fmtDelta(rd)}</td>`;'
+                    echo '        tbody.appendChild(tr);'
+                    echo '      });'
+                    echo '    });'
+                    echo '  </script>'
+                    echo '</body>'
+                    echo '</html>'
+                  } > "$HTML_FILE"
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+            - name: Configure Pages
+              uses: actions/configure-pages@v5
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: public
+            - name: Upload artifact
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: public
 
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+            - name: Deploy to GitHub Pages
+              uses: actions/deploy-pages@v4
