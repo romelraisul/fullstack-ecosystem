@@ -1,0 +1,86 @@
+name: Actionlint Version Bump
+
+on:
+    schedule:
+        - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+    workflow_dispatch: {}
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    bump:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Read current version
+              id: current
+              run: |
+                  if [ -f .github/actionlint-version.txt ]; then
+                    CURR=$(head -n1 .github/actionlint-version.txt | tr -d '\r')
+                  else
+                    CURR=""
+                  fi
+                  echo "current=$CURR" >> $GITHUB_OUTPUT
+
+            - name: Fetch latest release tag
+              id: latest
+              run: |
+                  LATEST=$(curl -sSL https://api.github.com/repos/rhysd/actionlint/releases/latest | jq -r '.tag_name')
+                  if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+                    echo "Failed to obtain latest actionlint release" >&2
+                    exit 1
+                  fi
+                  echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+            - name: Decide bump
+              id: decide
+              run: |
+                  if [ "${{ steps.latest.outputs.latest }}" = "${{ steps.current.outputs.current }}" ]; then
+                    echo "needs_bump=false" >> $GITHUB_OUTPUT
+                  else
+                    echo "needs_bump=true" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Update version file
+              if: steps.decide.outputs.needs_bump == 'true'
+              run: |
+                  echo "${{ steps.latest.outputs.latest }}" > .github/actionlint-version.txt
+                  cat .github/actionlint-version.txt
+
+            - name: Create branch and commit
+              if: steps.decide.outputs.needs_bump == 'true'
+              run: |
+                  set -e
+                  BRANCH="chore/actionlint-bump-${{ steps.latest.outputs.latest }}"
+                  git config user.name "github-actions"
+                  git config user.email "github-actions@users.noreply.github.com"
+                  git checkout -b "$BRANCH"
+                  git add .github/actionlint-version.txt
+                  git commit -m "chore: bump actionlint to ${{ steps.latest.outputs.latest }}"
+                  git push origin "$BRANCH" || echo "Push failed; ensure token has permissions"
+                  echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+            - name: Open pull request
+              if: steps.decide.outputs.needs_bump == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  BRANCH="chore/actionlint-bump-${{ steps.latest.outputs.latest }}"
+                  gh pr create \
+                    --title "chore: bump actionlint to ${{ steps.latest.outputs.latest }}" \
+                    --body "Automated update from ${{ steps.current.outputs.current }} to ${{ steps.latest.outputs.latest }}" \
+                    --head "$BRANCH" \
+                    --base main || echo "PR may already exist or permissions insufficient"
+
+            - name: Summary
+              run: |
+                  if [ "${{ steps.decide.outputs.needs_bump }}" = "true" ]; then
+                    echo "### Actionlint Bump" >> $GITHUB_STEP_SUMMARY
+                    echo "Opened PR to bump to ${{ steps.latest.outputs.latest }}" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "### Actionlint Bump" >> $GITHUB_STEP_SUMMARY
+                    echo "Already up to date (version ${{ steps.current.outputs.current }})" >> $GITHUB_STEP_SUMMARY
