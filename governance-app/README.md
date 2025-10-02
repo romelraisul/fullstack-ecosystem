@@ -8,6 +8,11 @@ Minimal FastAPI-based GitHub App backend to support CI governance automation.
 - /webhook endpoint (push & pull_request basic handling)
 - HMAC signature verification (X-Hub-Signature-256)
 - Action reference extraction + unpinned detection placeholder
+- Diff-based changed workflow discovery (push)
+- Installation token retrieval & raw workflow fetch
+- SQLite persistence of runs & findings
+- Structured JSON logging with correlation_id
+- GitHub Check Run summarizing unpinned refs
 
 ## Install / Run
 
@@ -47,6 +52,14 @@ Set the public URL as the webhook in the temporary App setup (or update manifest
 - Parse diff from push payload for workflow paths.
 - Post check-run or PR comment summarizing unpinned refs.
 - Persist metrics / snapshots centrally.
+
+These items are now partially or fully implemented (token retrieval, diff parsing, check-run, persistence, structured
+logging). Remaining future enhancements:
+
+- Add PR comment with richer markdown summary
+- Multi-repo aggregation endpoint
+- Severity scoring (untrusted vs internal)
+- Configurable allowlist/denylist
 
 ## Testing
 

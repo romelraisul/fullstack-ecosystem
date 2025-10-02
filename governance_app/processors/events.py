@@ -1,8 +1,7 @@
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Any, Dict, List
 from pathlib import Path
 from .action_refs import extract_action_refs, find_unpinned_external
-from typing import List
 
 class EventProcessor:
     def __init__(self, github_client):
@@ -23,7 +22,6 @@ class EventProcessor:
                 for p in c.get(k, []):
                     if p.startswith(".github/workflows/") and p.endswith(".yml"):
                         changed.append(p)
-        # De-duplicate
         workflow_paths = sorted(set(changed))
         findings = []
         token = None
@@ -37,7 +35,6 @@ class EventProcessor:
             content = None
             if token and owner and name:
                 content = await self.github_client.get_workflow_file(owner, name, path, token, ref=f"heads/{branch}")
-            # Fallback to local filesystem if remote fetch unavailable (useful for local simulation)
             if not content:
                 local_path = Path(path)
                 if local_path.exists():
@@ -51,7 +48,6 @@ class EventProcessor:
             unpinned = find_unpinned_external(refs)
             if unpinned:
                 findings.append({"workflow": path, "issues": [r.to_dict() for r in unpinned]})
-        # Summarize findings for potential check-run
         if token and owner and name and head_sha and findings:
             lines = []
             for f in findings:

@@ -16,8 +16,8 @@ app = FastAPI(title="Governance App", version="0.1.0")
 
 @app.on_event("startup")
 def _startup() -> None:
-    # Initialize database schema
     init_db()
+
 settings = get_settings()
 client = GitHubClient()
 processor = EventProcessor(client)
@@ -26,12 +26,10 @@ processor = EventProcessor(client)
 async def healthz():
     return {"status": "ok"}
 
-
 @app.get("/runs")
-async def runs(limit: int = 20):  # noqa: D401 - simple endpoint
+async def runs(limit: int = 20):
     limit = max(1, min(limit, 200))
     return {"items": list(recent_runs(limit=limit)), "count": limit}
-
 
 @app.get("/findings")
 async def findings(run_id: int | None = None, limit: int = 100):
@@ -58,7 +56,6 @@ async def webhook(request: Request):
 
     if event == "push":
         result = await processor.handle_push(payload)
-        # Persist run summary if successful
         if result.get("status") == "ok":
             repo = payload.get("repository", {}).get("full_name", "unknown")
             record_run(repo, result.get("branch", "unknown"), result.get("workflows_scanned", 0), result.get("findings", []))
