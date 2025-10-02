@@ -1,129 +1,175 @@
 name: Reusable Actionlint
 
 on:
-    workflow_call:
-        inputs:
-            actionlint-version:
-                required: false
-                type: string
-                default: v1.7.0
-            os-matrix:
-                required: false
-                type: string
-                default: '["ubuntu-latest","macos-latest","windows-latest"]'
+  workflow_call:
+    inputs:
+      actionlint-version:
+        required: false
+        type: string
+        default: v1.7.0
+      os-matrix:
+        required: false
+        type: string
+        default: '["ubuntu-latest","macos-latest","windows-latest"]'
+      persist-history:
+        required: false
+        type: boolean
+        default: false
+      badge:
+        required: false
+        type: boolean
+        default: true
 
 jobs:
-    actionlint:
-        strategy:
-            fail-fast: false
-            matrix:
-                os: ${{ fromJson(inputs.os-matrix) }}
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+  actionlint:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(inputs.os-matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Read version file (repo)
-              id: filever
-              run: |
-                  if [ -f .github/actionlint-version.txt ]; then
-                    echo "file_version=$(cat .github/actionlint-version.txt | tr -d '\r' | head -n1)" >> $GITHUB_OUTPUT
-                  fi
+      - name: Read version file (repo)
+        id: filever
+        run: |
+          if [ -f .github/actionlint-version.txt ]; then
+            echo "file_version=$(cat .github/actionlint-version.txt | tr -d '\r' | head -n1)" >> $GITHUB_OUTPUT
+          fi
 
-            - name: Resolve actionlint version
-              id: resolved
-              run: |
-                  if [ -n "${{ steps.filever.outputs.file_version }}" ]; then
-                    echo "version=${{ steps.filever.outputs.file_version }}" >> $GITHUB_OUTPUT
-                  else
-                    echo "version=${{ inputs.actionlint-version }}" >> $GITHUB_OUTPUT
-                  fi
+      - name: Resolve actionlint version
+        id: resolved
+        run: |
+          if [ -n "${{ steps.filever.outputs.file_version }}" ]; then
+            echo "version=${{ steps.filever.outputs.file_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ inputs.actionlint-version }}" >> $GITHUB_OUTPUT
+          fi
 
-            - name: Cache actionlint binary (ubuntu only)
-              if: matrix.os == 'ubuntu-latest'
-              uses: actions/cache@v4
-              with:
-                  path: .cache/actionlint
-                  key: actionlint-${{ steps.resolved.outputs.version }}
+      - name: Cache actionlint binary (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/cache@v4
+        with:
+          path: .cache/actionlint
+          key: actionlint-${{ steps.resolved.outputs.version }}
 
-            - name: Run actionlint (reviewdog annotations)
-              uses: reviewdog/action-actionlint@v1
-              continue-on-error: true  # We will enforce failure explicitly after metrics evaluation
-              with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
-                  reporter: github-pr-review
-                  fail_level: error
-                  level: warning
+      - name: Run actionlint (reviewdog annotations)
+        uses: reviewdog/action-actionlint@v1
+        continue-on-error: true # We will enforce failure explicitly after metrics evaluation
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_level: error
+          level: warning
 
-            - name: Generate SARIF (ubuntu only)
-              if: matrix.os == 'ubuntu-latest'
-              run: |
-                  set -e
-                  mkdir -p .cache/actionlint
-                  if [ ! -f .cache/actionlint/actionlint ]; then
-                    VER=${{ steps.resolved.outputs.version }}
-                    VER_STR=${VER#v}
-                    curl -sSL https://github.com/rhysd/actionlint/releases/download/${VER}/actionlint_${VER_STR}_$(uname -s)_$(uname -m).tar.gz -o actionlint.tgz || \
-                      curl -sSL https://github.com/rhysd/actionlint/releases/latest/download/actionlint_$(uname -s)_$(uname -m).tar.gz -o actionlint.tgz
-                    tar -xzf actionlint.tgz actionlint
-                    mv actionlint .cache/actionlint/
-                  fi
-                  .cache/actionlint/actionlint -format json > actionlint.json || true
-                  jq 'group_by(.reason) | map({id:(.[0].reason),name:(.[0].reason),shortDescription:{text:(.[0].message)},defaultConfiguration:{level:(if .[0].severity=="error" then "error" else "warning" end)}})' actionlint.json > rules.json
-                  jq -s '.[0] as $f | .[1] as $r | {"version":"2.1.0","$schema":"https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"actionlint","informationUri":"https://github.com/rhysd/actionlint","rules": $r}},"results": (if $f==[] then [] else ($f | map({"ruleId": .reason,"level": (if .severity=="error" then "error" else "warning" end),"message":{"text": .message},"locations":[{"physicalLocation":{"artifactLocation":{"uri": .file},"region":{"startLine": .line}}}]})) end)}]}' actionlint.json rules.json > actionlint.sarif
+      - name: Generate SARIF (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -e
+          mkdir -p .cache/actionlint
+          if [ ! -f .cache/actionlint/actionlint ]; then
+            VER=${{ steps.resolved.outputs.version }}
+            VER_STR=${VER#v}
+            curl -sSL https://github.com/rhysd/actionlint/releases/download/${VER}/actionlint_${VER_STR}_$(uname -s)_$(uname -m).tar.gz -o actionlint.tgz || \
+              curl -sSL https://github.com/rhysd/actionlint/releases/latest/download/actionlint_$(uname -s)_$(uname -m).tar.gz -o actionlint.tgz
+            tar -xzf actionlint.tgz actionlint
+            mv actionlint .cache/actionlint/
+          fi
+          .cache/actionlint/actionlint -format json > actionlint.json || true
+          jq 'group_by(.reason) | map({id:(.[0].reason),name:(.[0].reason),shortDescription:{text:(.[0].message)},defaultConfiguration:{level:(if .[0].severity=="error" then "error" else "warning" end)}})' actionlint.json > rules.json
+          jq -s '.[0] as $f | .[1] as $r | {"version":"2.1.0","$schema":"https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"actionlint","informationUri":"https://github.com/rhysd/actionlint","rules": $r}},"results": (if $f==[] then [] else ($f | map({"ruleId": .reason,"level": (if .severity=="error" then "error" else "warning" end),"message":{"text": .message},"locations":[{"physicalLocation":{"artifactLocation":{"uri": .file},"region":{"startLine": .line}}}]})) end)}]}' actionlint.json rules.json > actionlint.sarif
 
-            - name: Validate SARIF schema (ubuntu only)
-              if: matrix.os == 'ubuntu-latest'
-              run: |
-                  node --version || true
-                  if ! command -v npx >/dev/null 2>&1; then
-                    echo "Node not present; installing minimal Node via setup-node";
-                  fi
-                  npm init -y >/dev/null 2>&1 || true
-                  npm install ajv-cli@5 ajv-formats@2 --no-audit --no-fund >/dev/null 2>&1
-                  curl -sSL https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json -o sarif.schema.json
-                  npx ajv validate -s sarif.schema.json -d actionlint.sarif --strict=true || { echo "SARIF schema validation failed" >&2; exit 1; }
+      - name: Validate SARIF schema (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          node --version || true
+          if ! command -v npx >/dev/null 2>&1; then
+            echo "Node not present; installing minimal Node via setup-node";
+          fi
+          npm init -y >/dev/null 2>&1 || true
+          npm install ajv-cli@5 ajv-formats@2 --no-audit --no-fund >/dev/null 2>&1
+          curl -sSL https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json -o sarif.schema.json
+          npx ajv validate -s sarif.schema.json -d actionlint.sarif --strict=true || { echo "SARIF schema validation failed" >&2; exit 1; }
 
-            - name: Upload SARIF
-              if: matrix.os == 'ubuntu-latest'
-              uses: github/codeql-action/upload-sarif@v3
-              with:
-                  sarif_file: actionlint.sarif
+      - name: Upload SARIF
+        if: matrix.os == 'ubuntu-latest'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: actionlint.sarif
 
-            - name: Job Summary
-              if: matrix.os == 'ubuntu-latest'
-              run: |
-                  set -e
-                  RESULTS_COUNT=$(jq 'length' actionlint.json 2>/dev/null || echo 0)
-                  ERROR_COUNT=$(jq '[.[] | select(.severity=="error")] | length' actionlint.json 2>/dev/null || echo 0)
-                  WARN_COUNT=$(jq '[.[] | select(.severity!="error")] | length' actionlint.json 2>/dev/null || echo 0)
-                  RULE_COUNT=$(jq 'length' rules.json 2>/dev/null || echo 0)
-                  echo "{\"results\":${RESULTS_COUNT},\"errors\":${ERROR_COUNT},\"warnings\":${WARN_COUNT},\"rules\":${RULE_COUNT}}" > actionlint-metrics.json
-                  {
-                    echo "### Actionlint Summary"
-                    echo ""
-                    echo "- Results: ${RESULTS_COUNT} (errors: ${ERROR_COUNT}, warnings: ${WARN_COUNT})"
-                    echo "- Rules discovered: ${RULE_COUNT}"
-                    echo ""
-                    echo "| Severity | Count |"
-                    echo "|----------|-------|"
-                    echo "| Errors   | ${ERROR_COUNT} |"
-                    echo "| Warnings | ${WARN_COUNT} |"
-                  } >> $GITHUB_STEP_SUMMARY
+      - name: Job Summary
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -e
+          RESULTS_COUNT=$(jq 'length' actionlint.json 2>/dev/null || echo 0)
+          ERROR_COUNT=$(jq '[.[] | select(.severity=="error")] | length' actionlint.json 2>/dev/null || echo 0)
+          WARN_COUNT=$(jq '[.[] | select(.severity!="error")] | length' actionlint.json 2>/dev/null || echo 0)
+          RULE_COUNT=$(jq 'length' rules.json 2>/dev/null || echo 0)
+          echo "{\"results\":${RESULTS_COUNT},\"errors\":${ERROR_COUNT},\"warnings\":${WARN_COUNT},\"rules\":${RULE_COUNT}}" > actionlint-metrics.json
+          {
+            echo "### Actionlint Summary"
+            echo ""
+            echo "- Results: ${RESULTS_COUNT} (errors: ${ERROR_COUNT}, warnings: ${WARN_COUNT})"
+            echo "- Rules discovered: ${RULE_COUNT}"
+            echo ""
+            echo "| Severity | Count |"
+            echo "|----------|-------|"
+            echo "| Errors   | ${ERROR_COUNT} |"
+            echo "| Warnings | ${WARN_COUNT} |"
+          } >> $GITHUB_STEP_SUMMARY
 
-            - name: Upload metrics artifact
-              if: matrix.os == 'ubuntu-latest'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: actionlint-metrics
-                  path: actionlint-metrics.json
+      - name: Upload metrics artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: actionlint-metrics
+          path: actionlint-metrics.json
 
-            - name: Enforce failure on errors
-              if: matrix.os == 'ubuntu-latest'
-              run: |
-                  ERRORS=$(jq -r '.errors' actionlint-metrics.json 2>/dev/null || echo 0)
-                  if [ "$ERRORS" != "0" ]; then
-                    echo "Detected $ERRORS actionlint errors; failing job." >&2
-                    exit 1
-                  fi
-                  echo "No actionlint errors detected; passing gate."
+      - name: Enforce failure on errors
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          ERRORS=$(jq -r '.errors' actionlint-metrics.json 2>/dev/null || echo 0)
+          if [ "$ERRORS" != "0" ]; then
+            echo "Detected $ERRORS actionlint errors; failing job." >&2
+            exit 1
+          fi
+          echo "No actionlint errors detected; passing gate."
+
+      - name: Persist metrics history (main branch)
+        if: matrix.os == 'ubuntu-latest' && inputs.persist-history == true && github.ref == 'refs/heads/main'
+        run: |
+          set -e
+          mkdir -p metrics-history/actionlint
+          TS=$(date -u +%Y%m%dT%H%M%SZ)
+          cp actionlint-metrics.json metrics-history/actionlint/${TS}.json
+          # Lightweight rolling index
+          jq -s 'sort_by(.timestamp) | map(. )' <(jq '. + {"timestamp":"'"$TS"'"}' actionlint-metrics.json) >/dev/null 2>&1 || true
+          echo "Saved metrics snapshot ${TS}.json"
+        shell: bash
+
+      - name: Generate badge (main branch)
+        if: matrix.os == 'ubuntu-latest' && inputs.persist-history == true && inputs.badge == true && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -e
+          ERRORS=$(jq -r '.errors' actionlint-metrics.json)
+            COLOR=brightgreen
+          if [ "$ERRORS" -gt 0 ]; then
+            COLOR=red
+          fi
+          mkdir -p metrics-history/actionlint
+          echo "{\"schemaVersion\":1,\"label\":\"actionlint\",\"message\":\"errors ${ERRORS}\",\"color\":\"${COLOR}\"}" > metrics-history/actionlint/badge-actionlint.json
+
+      - name: Commit history and badge
+        if: matrix.os == 'ubuntu-latest' && inputs.persist-history == true && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -e
+          if git diff --quiet metrics-history 2>/dev/null; then
+            echo "No history changes to commit"; exit 0; fi
+          git config user.name "Romel Automation Bot"
+          git config user.email "romelraisul@gmail.com"
+          git add metrics-history/actionlint
+          git commit -m "chore: update actionlint metrics history" || echo "Nothing to commit"
+          git push origin HEAD:main || echo "Push failed (permissions?)"

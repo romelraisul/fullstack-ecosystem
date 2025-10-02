@@ -1,0 +1,47 @@
+name: Pin Action SHAs
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gh (if missing)
+        run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "GitHub CLI must be available in hosted runner (usually preinstalled).";
+          fi
+
+      - name: Run pin script
+        run: |
+          chmod +x scripts/pin-action-shas.sh
+          ./scripts/pin-action-shas.sh
+
+      - name: Create PR if changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"; exit 0; fi
+          git config user.name "Romel Automation Bot"
+            git config user.email "romelraisul@gmail.com"
+          BRANCH="chore/pin-action-shas-$(date -u +%Y%m%d%H%M%S)"
+          git checkout -b "$BRANCH"
+          git add .github/workflows
+          git commit -m "chore: pin GitHub Action references to SHAs"
+          git push origin "$BRANCH" || exit 0
+          gh pr create \
+            --title "chore: pin GitHub Action references to SHAs" \
+            --body "Automated pinning of mutable action references." \
+            --head "$BRANCH" \
+            --base main || true
