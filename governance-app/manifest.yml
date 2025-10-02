@@ -1,0 +1,22 @@
+# GitHub App Manifest (example)
+# Use this to bootstrap an App via the GitHub UI (paste in as 'Create from manifest').
+name: governance-app
+url: https://example.com
+hook_attributes:
+  url: https://example.com/webhook
+redirect_url: https://example.com/installed
+public: false
+default_permissions:
+  contents: read
+  metadata: read
+  checks: write
+  actions: read
+  pull_requests: write
+  issues: write
+  repository_hooks: write
+  security_events: read
+default_events:
+  - push
+  - pull_request
+  - check_run
+  - workflow_run
