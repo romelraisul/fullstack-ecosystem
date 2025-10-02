@@ -11,9 +11,9 @@ on:
 
 jobs:
         invoke:
-                # Fully qualified reusable workflow reference; replace OWNER/REPO with your org/user and repository name.
-                # Example: uses: your-org/fullstack-ecosystem/.github/workflows/reusable-actionlint.yml@main
-                uses: romel/fullstack-ecosystem/.github/workflows/reusable-actionlint.yml@main
+                # Fully qualified reusable workflow reference pinned by commit SHA for supply-chain integrity.
+                # Original branch ref: @main
+                uses: romel/fullstack-ecosystem/.github/workflows/reusable-actionlint.yml@cc7a04cb22dc618b72cca18e84751c377ad031c1
                 with:
                         actionlint-version: v1.7.0
                         os-matrix: '["ubuntu-latest","macos-latest","windows-latest"]'
