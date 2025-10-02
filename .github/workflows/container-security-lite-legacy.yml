@@ -1,0 +1,54 @@
+name: Container Security Lite (Legacy Corrupted Copy)
+
+# This file preserves the previously corrupted/overgrown version of the workflow
+# before it was replaced by the new minimal implementation. It is retained only
+# for historical reference and should NOT be referenced by any branch protections
+# or required checks. Safe to delete later once no longer needed.
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        default: Dockerfile
+      context:
+        description: Build context path
+        required: false
+        default: .
+      fail-on:
+        description: Fail threshold (critical|high|medium|any|none)
+        required: false
+        default: critical
+      notify-provider:
+        description: Notification provider (slack|teams|webhook|none)
+        required: false
+        default: none
+      notify-webhook-url:
+        description: Webhook URL if provider requires it
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  SYFT_VERSION: v1.14.0
+  TRIVY_VERSION: 0.52.1
+  GRYPE_VERSION: v0.76.3
+
+jobs:
+  scan:
+    name: Build, SBOM, Scan, Drift (Legacy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: (Truncated legacy content)
+        run: |
+          echo "This is a preserved legacy copy; original content contained provenance, cosign attestations, OpenVEX generation, license blocklist, CVSS normalization, digest drift gates, and other extended logic."
+          echo "The full original tail was structurally invalid and partially truncated; intentionally NOT executed anymore."
