@@ -27,14 +27,53 @@ async def healthz():
     return {"status": "ok"}
 
 @app.get("/runs")
-async def runs(limit: int = 20):
+async def runs(
+    limit: int = 20,
+    offset: int = 0,
+    repo: str | None = None,
+    branch: str | None = None,
+):
     limit = max(1, min(limit, 200))
-    return {"items": list(recent_runs(limit=limit)), "count": limit}
+    offset = max(0, offset)
+    items = list(recent_runs(limit=limit, offset=offset, repo=repo, branch=branch))
+    return {"items": items, "count": len(items), "limit": limit, "offset": offset, "repo": repo, "branch": branch}
+
+
 
 @app.get("/findings")
-async def findings(run_id: int | None = None, limit: int = 100):
+async def findings(
+    run_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    repo: str | None = None,
+    branch: str | None = None,
+    workflow: str | None = None,
+    action: str | None = None,
+):
     limit = max(1, min(limit, 500))
-    return {"items": list(list_findings(run_id=run_id, limit=limit)), "count": limit, "run_id": run_id}
+    offset = max(0, offset)
+    items = list(
+        list_findings(
+            run_id=run_id,
+            limit=limit,
+            offset=offset,
+            repo=repo,
+            branch=branch,
+            workflow=workflow,
+            action=action,
+        )
+    )
+    return {
+        "items": items,
+        "count": len(items),
+        "limit": limit,
+        "offset": offset,
+        "run_id": run_id,
+        "repo": repo,
+        "branch": branch,
+        "workflow": workflow,
+        "action": action,
+    }
 
 @app.post("/webhook")
 async def webhook(request: Request):
