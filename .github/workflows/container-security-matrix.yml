@@ -1,0 +1,31 @@
+# Matrix caller workflow for container security scan
+# Calls the reusable workflow with a matrix of images and aggregates results
+
+name: Container Security Matrix Scan
+
+on:
+    workflow_dispatch:
+        inputs:
+            images:
+                description: 'Comma-separated list of images to scan (e.g. "nginx:latest,alpine:3.18")'
+                required: true
+                default: "nginx:latest,alpine:3.18"
+
+jobs:
+    call_scan:
+        uses: ./.github/workflows/container-security-reusable.yml
+        with:
+            images: ${{ github.event.inputs.images }}
+        secrets: inherit
+
+    show_aggregate:
+        name: Show Aggregated Policy Results
+        runs-on: ubuntu-latest
+        needs: call_scan
+        steps:
+            - name: Print overall pass/fail
+              run: |
+                  echo "Overall policy pass: ${{ needs.call_scan.outputs.overall_pass }}"
+            - name: Print markdown summary
+              run: |
+                  echo "${{ needs.call_scan.outputs.summary_markdown }}"

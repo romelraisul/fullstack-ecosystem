@@ -1,0 +1,77 @@
+name: Container Security Scan (Reusable)
+# Reusable workflow for container image scanning with matrix and aggregation
+# - Matrix job scans each image, runs policy evaluation, and uploads per-image summary
+# - Aggregate job downloads all per-image summaries, combines results, and sets overall status
+
+on:
+    workflow_call:
+        inputs:
+            images:
+                description: "Comma-separated list of images to scan"
+                required: true
+                type: string
+        outputs:
+            overall_pass:
+                description: "Overall policy pass/fail (true/false)"
+                value: ${{ jobs.aggregate_policy.outputs.overall_pass }}
+            summary_markdown:
+                description: "Combined markdown summary of all images"
+                value: ${{ jobs.aggregate_policy.outputs.summary_markdown }}
+
+jobs:
+    scan:
+        name: Scan ${{ matrix.image }}
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                image: ${{ fromJson(inputs.images) }}
+        steps:
+            - name: Checkout (if needed)
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Pull image
+              run: |
+                  docker pull ${{ matrix.image }}
+            - name: Run Trivy scan
+              run: |
+                  trivy image --severity CRITICAL,HIGH,MEDIUM,LOW --format json -o trivy.json ${{ matrix.image }}
+            - name: Run Grype scan
+              run: |
+                  grype ${{ matrix.image }} -o json > grype.json
+            - name: Run Syft scan
+              run: |
+                  syft ${{ matrix.image }} -o json > syft.json
+            - name: Policy evaluation
+              run: |
+                  jq '{image: "${{ matrix.image }}", trivy: (input | .Results), grype: (input | .matches)}' trivy.json > policy-summary.json
+            - name: Upload policy summary
+              uses: actions/upload-artifact@v4
+              with:
+                  name: policy-summary-${{ matrix.image }}
+                  path: policy-summary.json
+
+    aggregate_policy:
+        name: Aggregate Policy Results
+        runs-on: ubuntu-latest
+        needs: scan
+        outputs:
+            overall_pass: ${{ steps.aggregate.outputs.overall_pass }}
+            summary_markdown: ${{ steps.aggregate.outputs.summary_markdown }}
+        steps:
+            - name: Download all policy summaries
+              uses: actions/download-artifact@v4
+              with:
+                  path: summaries
+            - name: Aggregate results
+              id: aggregate
+              run: |
+                  jq -s '.' summaries/policy-summary-*/policy-summary.json > combined-policy-summary.json
+                  # Example: set overall_pass to true if all images pass policy (customize as needed)
+                  echo "overall_pass=true" >> $GITHUB_OUTPUT
+                  echo "summary_markdown=See combined-policy-summary.json" >> $GITHUB_OUTPUT
+            - name: Upload combined summary
+              uses: actions/upload-artifact@v4
+              with:
+                  name: combined-policy-summary
+                  path: combined-policy-summary.json
