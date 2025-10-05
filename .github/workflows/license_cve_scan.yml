@@ -1,0 +1,79 @@
+name: License and CVE Scan
+
+on:
+    schedule:
+        - cron: "0 3 * * *" # daily at 03:00 UTC
+    workflow_dispatch: {}
+
+jobs:
+    scan-windows:
+        runs-on: windows-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.11"
+
+            - name: Ensure build-reports directory
+              shell: pwsh
+              run: New-Item -ItemType Directory -Path build-reports -Force
+
+            - name: Run license & CVE scan (PowerShell)
+              shell: pwsh
+              run: ./scripts/license_cve_scan.ps1 -FailOnHigh:$false
+
+            - name: Upload build-reports artifact (windows)
+              uses: actions/upload-artifact@v4
+              with:
+                  name: license-cve-scan-reports-windows
+                  path: build-reports/**
+
+    scan-ubuntu:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.11"
+
+            - name: Ensure build-reports directory
+              run: mkdir -p build-reports
+
+            - name: Create venv and install tools
+              run: |
+                  python -m venv .venv
+                  . .venv/bin/activate
+                  python -m pip install --upgrade pip
+                  python -m pip install pip-licenses safety
+
+            - name: Run pip-licenses
+              run: |
+                  . .venv/bin/activate
+                  python -m piplicenses --format=json --with-urls > build-reports/licenses.json || true
+
+            - name: Run safety scan (JSON)
+              run: |
+                  . .venv/bin/activate
+                  python -m safety check --json > build-reports/safety_report.json || true
+
+            - name: Fail on high CVE severity
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  if [ ! -f build-reports/safety_report.json ]; then
+                    echo "No safety JSON found, skipping fail-on-high"
+                    exit 0
+                  fi
+                  python -c 'import json,sys\nD=json.load(open("build-reports/safety_report.json"))\nv=D.get("vulnerabilities") if isinstance(D,dict) else D\nfound=False\nfor x in (v or []):\n    sev=(x.get("severity") or x.get("vulnerability_severity") or "").lower()\n    if sev in ("high","critical"):\n        found=True\n        break\nif found:\n    sys.exit(2)\nelse:\n    sys.exit(0)'
+
+            - name: Upload build-reports artifact (ubuntu)
+              uses: actions/upload-artifact@v4
+              with:
+                  name: license-cve-scan-reports-ubuntu
+                  path: build-reports/**
