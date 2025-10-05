@@ -3,21 +3,21 @@ name: Enhanced License and CVE Security Scan
 on:
     schedule:
         # Multiple daily scans for better security coverage
-        - cron: "0 3 * * *"  # 03:00 UTC (early morning)
+        - cron: "0 3 * * *" # 03:00 UTC (early morning)
         - cron: "0 15 * * *" # 15:00 UTC (afternoon)
     workflow_dispatch:
         inputs:
             severity_threshold:
-                description: 'Minimum severity to fail on (medium, high, critical)'
+                description: "Minimum severity to fail on (medium, high, critical)"
                 required: false
-                default: 'high'
+                default: "high"
                 type: choice
                 options:
                     - medium
                     - high
                     - critical
             notification_enabled:
-                description: 'Enable notifications on failure'
+                description: "Enable notifications on failure"
                 required: false
                 default: true
                 type: boolean
@@ -139,20 +139,20 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  
+
                   # Get severity threshold from environment
                   THRESHOLD="${SEVERITY_THRESHOLD:-high}"
                   echo "Using severity threshold: $THRESHOLD"
-                  
+
                   # Define severity levels (lower number = higher severity)
                   declare -A severity_levels=( ["critical"]=1 ["high"]=2 ["medium"]=3 ["low"]=4 )
                   threshold_level=${severity_levels[$THRESHOLD]}
-                  
+
                   found_critical=false
                   found_high=false
                   found_medium=false
                   total_vulns=0
-                  
+
                   # Check Safety report
                   if [ -f build-reports/safety_report.json ]; then
                       python3 << EOF
@@ -189,10 +189,10 @@ jobs:
                       echo "safety_high=0" >> build-reports/severity_summary.txt
                       echo "safety_medium=0" >> build-reports/severity_summary.txt
                   fi
-                  
+
                   # Source the summary
                   source build-reports/severity_summary.txt
-                  
+
                   # Check npm audit report
                   npm_critical=0
                   npm_high=0
@@ -202,20 +202,20 @@ jobs:
                       npm_high=$(jq -r '.metadata.vulnerabilities.high // 0' build-reports/npm_audit_report.json 2>/dev/null || echo 0)
                       npm_medium=$(jq -r '.metadata.vulnerabilities.moderate // 0' build-reports/npm_audit_report.json 2>/dev/null || echo 0)
                   fi
-                  
+
                   # Calculate totals
                   total_critical=$((safety_critical + npm_critical))
                   total_high=$((safety_high + npm_high))
                   total_medium=$((safety_medium + npm_medium))
                   total_vulns=$((total_critical + total_high + total_medium))
-                  
+
                   echo "=== Security Scan Summary ==="
                   echo "Critical: $total_critical"
                   echo "High: $total_high"
                   echo "Medium: $total_medium"
                   echo "Total vulnerabilities: $total_vulns"
                   echo "Threshold: $THRESHOLD (level $threshold_level)"
-                  
+
                   # Write summary for notifications
                   cat > build-reports/vulnerability_summary.json << EOF
                   {
@@ -227,7 +227,7 @@ jobs:
                     "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
                   }
                   EOF
-                  
+
                   # Determine if we should fail based on threshold
                   should_fail=false
                   case $THRESHOLD in
@@ -241,7 +241,7 @@ jobs:
                           if [ $total_critical -gt 0 ] || [ $total_high -gt 0 ] || [ $total_medium -gt 0 ]; then should_fail=true; fi
                           ;;
                   esac
-                  
+
                   if [ "$should_fail" = true ]; then
                       echo "❌ FAILURE: Found vulnerabilities at or above '$THRESHOLD' severity threshold"
                       echo "::set-output name=vulnerability_found::true"
@@ -264,18 +264,18 @@ jobs:
               uses: 8398a7/action-slack@v3
               with:
                   status: failure
-                  channel: '#security-alerts'
-                  title: '🚨 Security Vulnerabilities Detected'
+                  channel: "#security-alerts"
+                  title: "🚨 Security Vulnerabilities Detected"
                   message: |
                       **Repository:** ${{ github.repository }}
                       **Branch:** ${{ github.ref_name }}
                       **Threshold:** ${{ env.SEVERITY_THRESHOLD }}
                       **Workflow:** ${{ github.workflow }}
                       **Run:** ${{ github.run_number }}
-                      
+
                       High priority security vulnerabilities have been detected in the codebase.
                       Please review the scan reports and take immediate action.
-                      
+
                       📊 **View Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               env:
                   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -288,9 +288,9 @@ jobs:
                   server_port: 587
                   username: ${{ secrets.MAIL_USERNAME }}
                   password: ${{ secrets.MAIL_PASSWORD }}
-                  subject: '🚨 Security Alert: Vulnerabilities Detected in ${{ github.repository }}'
+                  subject: "🚨 Security Alert: Vulnerabilities Detected in ${{ github.repository }}"
                   to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
-                  from: 'GitHub Actions Security Scanner <${{ secrets.MAIL_USERNAME }}>'
+                  from: "GitHub Actions Security Scanner <${{ secrets.MAIL_USERNAME }}>"
                   html_body: |
                       <h2>🚨 Security Vulnerabilities Detected</h2>
                       <p><strong>Repository:</strong> ${{ github.repository }}</p>
@@ -298,10 +298,10 @@ jobs:
                       <p><strong>Severity Threshold:</strong> ${{ env.SEVERITY_THRESHOLD }}</p>
                       <p><strong>Workflow Run:</strong> #${{ github.run_number }}</p>
                       <p><strong>Timestamp:</strong> ${{ github.event.head_commit.timestamp }}</p>
-                      
+
                       <h3>Action Required</h3>
                       <p>High priority security vulnerabilities have been detected in your codebase that meet or exceed the configured severity threshold.</p>
-                      
+
                       <h3>Next Steps</h3>
                       <ol>
                           <li>Review the detailed scan reports in the workflow artifacts</li>
@@ -309,9 +309,9 @@ jobs:
                           <li>Test the fixes in a development environment</li>
                           <li>Deploy the security updates</li>
                       </ol>
-                      
+
                       <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">📊 View Detailed Results</a></p>
-                      
+
                       <hr>
                       <p><small>This is an automated security alert from GitHub Actions. Configure notification settings in your repository's workflow file.</small></p>
 
@@ -336,7 +336,7 @@ jobs:
                   echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
                   echo "**Workflow Run:** [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> security_summary.md
                   echo "" >> security_summary.md
-                  
+
                   if [ -f reports/vulnerability_summary.json ]; then
                       echo "### 📊 Vulnerability Breakdown" >> security_summary.md
                       python3 << 'EOF'
@@ -353,7 +353,7 @@ jobs:
                       print("- **Status:** Report parsing failed")
                   EOF
                   fi >> security_summary.md
-                  
+
                   echo "" >> security_summary.md
                   echo "### 🛠️ Available Reports" >> security_summary.md
                   echo "The following security scan reports are available as workflow artifacts:" >> security_summary.md
@@ -370,7 +370,7 @@ jobs:
                   script: |
                       const fs = require('fs');
                       const summary = fs.readFileSync('security_summary.md', 'utf8');
-                      
+
                       const issue = await github.rest.issues.create({
                           owner: context.repo.owner,
                           repo: context.repo.repo,
@@ -378,5 +378,5 @@ jobs:
                           body: summary,
                           labels: ['security', 'vulnerability', 'high-priority']
                       });
-                      
+
                       console.log(`Created security issue: ${issue.data.html_url}`);

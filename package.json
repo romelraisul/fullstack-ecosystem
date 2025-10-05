@@ -1,0 +1,10 @@
+{
+    "name": "fullstack-ecosystem",
+    "private": true,
+    "version": "0.1.0",
+    "scripts": {
+        "dev": "docker compose up -d --build && pwsh -File ./scripts/smoke.ps1",
+        "up": "docker compose up -d",
+        "down": "docker compose down"
+    }
+}

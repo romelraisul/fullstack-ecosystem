@@ -32,3 +32,6 @@ Thumbs.db
 # Node / frontend (if added later)
 node_modules/
 
+# Generated SDK clients
+clients/
+
