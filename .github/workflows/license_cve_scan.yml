@@ -306,7 +306,7 @@ jobs:
 
             - name: Create GitHub Issue for security alert
               if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               with:
                   github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
                   script: |
