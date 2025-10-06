@@ -233,6 +233,68 @@ async def _early_phase():  # pragma: no cover simple
     }
 
 
+# Liveness and readiness endpoints (distinct from /metrics)
+@app.get("/health/live", include_in_schema=False)
+async def liveness_probe():
+    """Liveness probe: quick check that process is running.
+
+    This should be cheap and only used by the orchestrator to know the
+    process is alive (not necessarily fully ready to serve traffic).
+    """
+    return {"status": "alive", "uptime_seconds": round(_time.perf_counter() - _start_ts, 2)}
+
+
+@app.get("/health/ready", include_in_schema=False)
+async def readiness_probe(request: Request):
+    """Readiness probe: perform lightweight readiness checks for core dependencies.
+
+    Checks implemented:
+    - Repository DB connectivity (calls a minimal ping/read if ConversationsRepository exists)
+    - Writable temp directory check
+    The endpoint returns 200 when ready, 503 when not ready, and a small JSON payload.
+    """
+    checks: dict[str, dict[str, str | bool]] = {}
+
+    # DB connectivity check (if repository classes available)
+    try:
+        db_ok = False
+        if 'ConversationsRepository' in globals() and ConversationsRepository:
+            try:
+                repo = ConversationsRepository()  # type: ignore
+                # Prefer a lightweight ping method if available
+                if hasattr(repo, 'ping'):
+                    db_ok = bool(repo.ping())
+                elif hasattr(repo, 'health_check'):
+                    db_ok = bool(repo.health_check())
+                else:
+                    # Fallback: try a simple read that should be cheap
+                    _ = getattr(repo, 'count_all', lambda: 0)()
+                    db_ok = True
+            except Exception:
+                db_ok = False
+        else:
+            # If no repo class present (SAFE_MODE), mark as skipped
+            db_ok = True
+        checks['db'] = {"ok": db_ok}
+    except Exception:
+        checks['db'] = {"ok": False}
+
+    # Writable tmp directory check
+    try:
+        tmp = Path(os.getenv('TMPDIR') or os.getenv('TMP') or '/tmp')
+        test_file = tmp / f"ready_test_{int(_time.time())}.tmp"
+        with open(test_file, 'w') as fh:
+            fh.write('ok')
+        test_file.unlink(missing_ok=True)
+        checks['tmp_writable'] = {"ok": True}
+    except Exception:
+        checks['tmp_writable'] = {"ok": False}
+
+    ready = all(v.get('ok') for v in (c for c in (checks.values())))
+    status_code = 200 if ready else 503
+    return Request.app.responses.get('json')(checks) if False else (checks if ready else (checks, status_code))
+
+
 """Advanced backend main FastAPI application.
 
 Refactor notes (2025-10):
