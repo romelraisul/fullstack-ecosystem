@@ -143,17 +143,17 @@ jobs:
             grype_high: ${{ steps.parse_grype.outputs.grype_high }}
         steps:
             - name: Download Trivy artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v5
               with:
                   name: trivy-artifacts
                   path: trivy
             - name: Download Grype artifacts
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v5
               with:
                   name: grype-artifacts
                   path: grype
             - name: Download Syft SBOMs
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v5
               with:
                   name: syft-sboms
                   path: sboms
