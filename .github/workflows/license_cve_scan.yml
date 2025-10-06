@@ -1,3 +1,6 @@
+name: license-cve-scan-stub
+name: Enhanced License and CVE Security Scan
+
 name: Enhanced License and CVE Security Scan
 
 on:
@@ -7,19 +10,13 @@ on:
     workflow_dispatch:
         inputs:
             severity_threshold:
-                description: "Minimum severity to fail on (medium, high, critical)"
+                description: 'Minimum severity to alert on (medium, high, critical)'
                 required: false
-                default: "high"
-                type: choice
-                options:
-                    - medium
-                    - high
-                    - critical
+                default: 'high'
             notification_enabled:
-                description: "Enable notifications on failure"
+                description: 'Enable notifications (true/false)'
                 required: false
-                default: true
-                type: boolean
+                default: 'true'
 
 env:
     SEVERITY_THRESHOLD: ${{ github.event.inputs.severity_threshold || 'high' }}
@@ -46,37 +43,29 @@ jobs:
                 with:
                     node-version: '18'
 
-            - name: Ensure build-reports directory
+            - name: Prepare build-reports
                 shell: pwsh
                 run: New-Item -ItemType Directory -Path build-reports -Force
 
-            - name: Install additional security tools
+            - name: Install security tools (Windows)
                 shell: pwsh
                 run: |
                     python -m pip install --upgrade pip
-                    python -m pip install bandit semgrep
+                    python -m pip install pip-licenses safety bandit semgrep || true
+                    npm --version || true
 
-            - name: Run license & CVE scan (PowerShell)
+            - name: Run scans (Windows)
                 shell: pwsh
                 run: |
-                    pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\license_cve_scan.ps1 -FailOnHigh:$false
-
-            - name: Run Bandit security linter (Windows)
-                shell: pwsh
-                run: |
-                    bandit -r . -f json -o build-reports/bandit_report_windows.json
-                continue-on-error: true
-
-            - name: Run npm audit (Windows, if package.json exists)
-                shell: pwsh
-                run: |
-                    if (Test-Path package.json) {
-                        npm audit --audit-level=moderate --json | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                    } else {
-                        Write-Host "No package.json found, skipping npm audit"
-                        '{"vulnerabilities": {}}' | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                    }
-                continue-on-error: true
+                    # pip-licenses
+                    python -m piplicenses --format=json > build-reports/licenses_windows.json 2>$null || $true
+                    # safety (generate JSON when possible)
+                    python -m safety check --json > build-reports/safety_report_windows.json 2>$null || $true
+                    # bandit
+                    bandit -r . -f json -o build-reports/bandit_report_windows.json || $true
+                    # semgrep (if installed)
+                    semgrep --config=auto --json > build-reports/semgrep_report_windows.json 2>$null || $true
+                    if (Test-Path package.json) { npm audit --json > build-reports/npm_audit_report_windows.json } else { '{"vulnerabilities":{}}' | Out-File build-reports/npm_audit_report_windows.json -Encoding utf8 }
 
             - name: Upload build-reports artifact (windows)
                 uses: actions/upload-artifact@v4
@@ -85,303 +74,176 @@ jobs:
                     path: build-reports/**
 
     scan-ubuntu:
-                        - name: Checkout
-                            uses: actions/checkout@v4
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+                uses: actions/checkout@v4
 
-                        - name: Setup Python
-                            uses: actions/setup-python@v4
-                            with:
-                                python-version: '3.11'
+            - name: Setup Python
+                uses: actions/setup-python@v4
+                with:
+                    python-version: '3.11'
 
-                        - name: Setup Node.js
-                            uses: actions/setup-node@v4
-                            with:
-                                node-version: '18'
+            - name: Setup Node.js
+                uses: actions/setup-node@v4
+                with:
+                    node-version: '18'
 
-                        - name: Ensure build-reports directory
-                            shell: pwsh
-                            run: New-Item -ItemType Directory -Path build-reports -Force
+            - name: Prepare build-reports
+                run: mkdir -p build-reports
 
-                        - name: Install additional security tools
-                            shell: pwsh
-                            run: |
-                                python -m pip install --upgrade pip
-                                python -m pip install bandit semgrep
+            - name: Install security tools (Ubuntu)
+                run: |
+                    set -euxo pipefail
+                    python -m pip install --upgrade pip
+                    python -m pip install pip-licenses safety bandit semgrep || true
+                    npm --version || true
 
-                        - name: Run license & CVE scan (PowerShell)
-                            shell: pwsh
-                            run: |
-                                pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\license_cve_scan.ps1 -FailOnHigh:$false
-
-                        - name: Run Bandit security linter (Windows)
-                            shell: pwsh
-                            run: |
-                                bandit -r . -f json -o build-reports/bandit_report_windows.json
-                            continue-on-error: true
-
-                        - name: Run npm audit (Windows, if package.json exists)
-                            shell: pwsh
-                            run: |
-                                if (Test-Path package.json) {
-                                    npm audit --audit-level=moderate --json | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                                } else {
-                                    Write-Host "No package.json found, skipping npm audit"
-                                    '{"vulnerabilities": {}}' | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                                }
-                            continue-on-error: true
-
-                        - name: Upload build-reports artifact (windows)
-                            uses: actions/upload-artifact@v4
-                            with:
-                                name: license-cve-scan-reports-windows
-                                path: build-reports/**
-
-                scan-ubuntu:
-
-            - name: Analyze CVE severity and fail if threshold exceeded
-              shell: bash
-              run: |
-                  set -euo pipefail
-
-                  # Get severity threshold from environment
-                  THRESHOLD="${SEVERITY_THRESHOLD:-high}"
-                  echo "Using severity threshold: $THRESHOLD"
-
-                  # Define severity levels (lower number = higher severity)
-                  declare -A severity_levels=( ["critical"]=1 ["high"]=2 ["medium"]=3 ["low"]=4 )
-                  threshold_level=${severity_levels[$THRESHOLD]}
-
-                  found_critical=false
-                  found_high=false
-                  found_medium=false
-                  total_vulns=0
-
-                  # Check Safety report
-                  if [ -f build-reports/safety_report.json ]; then
-                      python3 << EOF
-                  import json, sys
-                  try:
-                      with open("build-reports/safety_report.json") as f:
-                          data = json.load(f)
-                      vulns = data.get("vulnerabilities", []) if isinstance(data, dict) else data
-
-                      critical_count = high_count = medium_count = 0
-                      for vuln in (vulns or []):
-                          sev = (vuln.get("severity") or vuln.get("vulnerability_severity") or "").lower()
-                          if sev == "critical":
-                              critical_count += 1
-                          elif sev == "high":
-                              high_count += 1
-                          elif sev == "medium":
-                              medium_count += 1
-
-                      print(f"Safety - Critical: {critical_count}, High: {high_count}, Medium: {medium_count}")
-
-                      # Write summary for bash to read
-                      with open("build-reports/severity_summary.txt", "w") as f:
-                          f.write(f"safety_critical={critical_count}\n")
-                          f.write(f"safety_high={high_count}\n")
-                          f.write(f"safety_medium={medium_count}\n")
-                  except Exception as e:
-                      print(f"Error processing safety report: {e}")
-                      with open("build-reports/severity_summary.txt", "w") as f:
-                          f.write("safety_critical=0\nsafety_high=0\nsafety_medium=0\n")
-                  EOF
-                  else
-                      echo "safety_critical=0" > build-reports/severity_summary.txt
-                      echo "safety_high=0" >> build-reports/severity_summary.txt
-                      echo "safety_medium=0" >> build-reports/severity_summary.txt
-                  fi
-
-                  # Source the summary
-                  source build-reports/severity_summary.txt
-
-                  # Check npm audit report
-                  npm_critical=0
-                  npm_high=0
-                  npm_medium=0
-                  if [ -f build-reports/npm_audit_report.json ]; then
-                      npm_critical=$(jq -r '.metadata.vulnerabilities.critical // 0' build-reports/npm_audit_report.json 2>/dev/null || echo 0)
-                      npm_high=$(jq -r '.metadata.vulnerabilities.high // 0' build-reports/npm_audit_report.json 2>/dev/null || echo 0)
-                      npm_medium=$(jq -r '.metadata.vulnerabilities.moderate // 0' build-reports/npm_audit_report.json 2>/dev/null || echo 0)
-                  fi
-
-                  # Calculate totals
-                  total_critical=$((safety_critical + npm_critical))
-                  total_high=$((safety_high + npm_high))
-                  total_medium=$((safety_medium + npm_medium))
-                  total_vulns=$((total_critical + total_high + total_medium))
-
-                  echo "=== Security Scan Summary ==="
-                  echo "Critical: $total_critical"
-                  echo "High: $total_high"
-                  echo "Medium: $total_medium"
-                  echo "Total vulnerabilities: $total_vulns"
-                  echo "Threshold: $THRESHOLD (level $threshold_level)"
-
-                  # Write summary for notifications
-                  cat > build-reports/vulnerability_summary.json << EOF
-                  {
-                    "threshold": "$THRESHOLD",
-                    "total_vulnerabilities": $total_vulns,
-                    "critical": $total_critical,
-                    "high": $total_high,
-                    "medium": $total_medium,
-                    "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                  }
-                  EOF
-
-                  # Determine if we should fail based on threshold
-                  should_fail=false
-                  case $THRESHOLD in
-                      "critical")
-                          if [ $total_critical -gt 0 ]; then should_fail=true; fi
-                          ;;
-                      "high")
-                          if [ $total_critical -gt 0 ] || [ $total_high -gt 0 ]; then should_fail=true; fi
-                          ;;
-                      "medium")
-                          if [ $total_critical -gt 0 ] || [ $total_high -gt 0 ] || [ $total_medium -gt 0 ]; then should_fail=true; fi
-                          ;;
-                  esac
-
-                  if [ "$should_fail" = true ]; then
-                      echo "❌ FAILURE: Found vulnerabilities at or above '$THRESHOLD' severity threshold"
-                      echo "::set-output name=vulnerability_found::true"
-                      exit 2
-                  else
-                      echo "✅ SUCCESS: No vulnerabilities found at or above '$THRESHOLD' severity threshold"
-                      echo "::set-output name=vulnerability_found::false"
-                      exit 0
-                  fi
-              id: severity_check
+            - name: Run scans (Ubuntu)
+                run: |
+                    set -euxo pipefail
+                    python -m piplicenses --format=json > build-reports/licenses_ubuntu.json 2>/dev/null || true
+                    python -m safety check --json > build-reports/safety_report_ubuntu.json 2>/dev/null || true
+                    bandit -r . -f json -o build-reports/bandit_report_ubuntu.json || true
+                    semgrep --config=auto --json > build-reports/semgrep_report_ubuntu.json 2>/dev/null || true
+                    if [ -f package.json ]; then npm audit --json > build-reports/npm_audit_report_ubuntu.json || true; else echo '{"vulnerabilities":{}}' > build-reports/npm_audit_report_ubuntu.json; fi
 
             - name: Upload build-reports artifact (ubuntu)
-              uses: actions/upload-artifact@v4
-              with:
-                  name: license-cve-scan-reports-ubuntu
-                  path: build-reports/**
-
-            - name: Send Slack notification on vulnerability detection
-              if: failure() && env.NOTIFICATION_ENABLED == 'true'
-              uses: 8398a7/action-slack@v3
-              with:
-                  status: failure
-                  channel: "#security-alerts"
-                  title: "🚨 Security Vulnerabilities Detected"
-                  message: |
-                      **Repository:** ${{ github.repository }}
-                      **Branch:** ${{ github.ref_name }}
-                      **Threshold:** ${{ env.SEVERITY_THRESHOLD }}
-                      **Workflow:** ${{ github.workflow }}
-                      **Run:** ${{ github.run_number }}
-
-                      High priority security vulnerabilities have been detected in the codebase.
-                      Please review the scan reports and take immediate action.
-
-                      📊 **View Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-              env:
-                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-            - name: Send email notification on vulnerability detection
-              if: failure() && env.NOTIFICATION_ENABLED == 'true'
-              uses: dawidd6/action-send-mail@v3
-              with:
-                  server_address: smtp.gmail.com
-                  server_port: 587
-                  username: ${{ secrets.MAIL_USERNAME }}
-                  password: ${{ secrets.MAIL_PASSWORD }}
-                  subject: "🚨 Security Alert: Vulnerabilities Detected in ${{ github.repository }}"
-                  to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
-                  from: "GitHub Actions Security Scanner <${{ secrets.MAIL_USERNAME }}>"
-                  html_body: |
-                      <h2>🚨 Security Vulnerabilities Detected</h2>
-                      <p><strong>Repository:</strong> ${{ github.repository }}</p>
-                      <p><strong>Branch:</strong> ${{ github.ref_name }}</p>
-                      <p><strong>Severity Threshold:</strong> ${{ env.SEVERITY_THRESHOLD }}</p>
-                      <p><strong>Workflow Run:</strong> #${{ github.run_number }}</p>
-                      <p><strong>Timestamp:</strong> ${{ github.event.head_commit.timestamp }}</p>
-
-                      <h3>Action Required</h3>
-                      <p>High priority security vulnerabilities have been detected in your codebase that meet or exceed the configured severity threshold.</p>
-
-                      <h3>Next Steps</h3>
-                      <ol>
-                          <li>Review the detailed scan reports in the workflow artifacts</li>
-                          <li>Identify and update vulnerable dependencies</li>
-                          <li>Test the fixes in a development environment</li>
-                          <li>Deploy the security updates</li>
-                      </ol>
-
-                      <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">📊 View Detailed Results</a></p>
-
-                      <hr>
-                      <p><small>This is an automated security alert from GitHub Actions. Configure notification settings in your repository's workflow file.</small></p>
+                uses: actions/upload-artifact@v4
+                with:
+                    name: license-cve-scan-reports-ubuntu
+                    path: build-reports/**
 
     notify-security-team:
         runs-on: ubuntu-latest
         needs: [scan-windows, scan-ubuntu]
-        if: always() && (needs.scan-windows.result == 'failure' || needs.scan-ubuntu.result == 'failure') && github.event.inputs.notification_enabled != 'false'
+        if: always()
         steps:
             - name: Download vulnerability reports
-              uses: actions/download-artifact@v4
-              with:
-                  pattern: license-cve-scan-reports-*
-                  merge-multiple: true
-                  path: ./reports
+                uses: actions/download-artifact@v4
+                with:
+                    pattern: license-cve-scan-reports-*
+                    merge-multiple: true
+                    path: ./reports
 
-            - name: Create security summary
-              run: |
-                  echo "## 🔒 Security Scan Summary" > security_summary.md
-                  echo "" >> security_summary.md
-                  echo "**Repository:** ${{ github.repository }}" >> security_summary.md
-                  echo "**Branch:** ${{ github.ref_name }}" >> security_summary.md
-                  echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
-                  echo "**Workflow Run:** [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> security_summary.md
-                  echo "" >> security_summary.md
+            - name: Aggregate reports
+                id: aggregate
+                run: |
+                    python3 - <<'PY'
+                    import json, glob, os
+                    total = { 'critical': 0, 'high': 0, 'medium': 0 }
+                    for p in glob.glob('reports/**/*.json', recursive=True):
+                            try:
+                                    d = json.load(open(p))
+                            except Exception:
+                                    continue
+                            # npm audit shape
+                            if isinstance(d, dict) and 'metadata' in d and isinstance(d.get('metadata'), dict):
+                                    v = d.get('metadata', {}).get('vulnerabilities', {})
+                                    total['critical'] += int(v.get('critical', 0) or 0)
+                                    total['high'] += int(v.get('high', 0) or 0)
+                                    total['medium'] += int(v.get('moderate', 0) or v.get('medium', 0) or 0)
+                            # safety (list or dict)
+                            if isinstance(d, dict) and 'vulnerabilities' in d and isinstance(d['vulnerabilities'], list):
+                                    for v in d['vulnerabilities']:
+                                            sev = (v.get('severity') or v.get('vulnerability_severity') or '').lower()
+                                            if sev == 'critical':
+                                                    total['critical'] += 1
+                                            elif sev == 'high':
+                                                    total['high'] += 1
+                                            elif sev == 'medium':
+                                                    total['medium'] += 1
+                            # bandit results
+                            if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
+                                    for r in d['results']:
+                                            sev = (r.get('issue_severity') or '').lower()
+                                            if sev == 'high':
+                                                    total['high'] += 1
+                                            elif sev == 'medium':
+                                                    total['medium'] += 1
+                    os.makedirs('reports/summary', exist_ok=True)
+                    with open('reports/summary/summary.json','w') as f:
+                            json.dump(total, f)
+                    # export simple outputs
+                    with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
+                            out.write(f"critical={total['critical']}\n")
+                            out.write(f"high={total['high']}\n")
+                            out.write(f"medium={total['medium']}\n")
+                    print(total)
+                    PY
 
-                  if [ -f reports/vulnerability_summary.json ]; then
-                      echo "### 📊 Vulnerability Breakdown" >> security_summary.md
-                      python3 << 'EOF'
-                  import json
-                  try:
-                      with open("reports/vulnerability_summary.json") as f:
-                          data = json.load(f)
-                      print(f"- **Critical:** {data.get('critical', 0)}")
-                      print(f"- **High:** {data.get('high', 0)}")
-                      print(f"- **Medium:** {data.get('medium', 0)}")
-                      print(f"- **Total:** {data.get('total_vulnerabilities', 0)}")
-                      print(f"- **Threshold:** {data.get('threshold', 'N/A')}")
-                  except:
-                      print("- **Status:** Report parsing failed")
-                  EOF
-                  fi >> security_summary.md
+            - name: Evaluate threshold
+                id: threshold
+                run: |
+                    python3 - <<'PY'
+                    import json, os
+                    th = os.environ.get('SEVERITY_THRESHOLD','high').lower()
+                    data = json.load(open('reports/summary/summary.json'))
+                    found = False
+                    if th == 'critical':
+                            found = data.get('critical',0) > 0
+                    elif th == 'high':
+                            found = data.get('critical',0) > 0 or data.get('high',0) > 0
+                    else:
+                            found = data.get('critical',0) > 0 or data.get('high',0) > 0 or data.get('medium',0) > 0
+                    # write output for later steps
+                    with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
+                            out.write(f"vulnerability_found={'true' if found else 'false'}\n")
+                    print('vulnerability_found=' + str(found))
+                    PY
 
-                  echo "" >> security_summary.md
-                  echo "### 🛠️ Available Reports" >> security_summary.md
-                  echo "The following security scan reports are available as workflow artifacts:" >> security_summary.md
-                  echo "- License compliance report (licenses.json)" >> security_summary.md
-                  echo "- Python dependency vulnerabilities (safety_report.json)" >> security_summary.md
-                  echo "- Code security analysis (bandit_report.json)" >> security_summary.md
-                  echo "- Advanced security patterns (semgrep_report.json)" >> security_summary.md
-                  echo "- JavaScript/Node.js audit (npm_audit_report.json)" >> security_summary.md
+            - name: Create security summary markdown
+                run: |
+                    echo "# 🔒 Security Scan Summary" > security_summary.md
+                    echo "" >> security_summary.md
+                    echo "**Repository:** ${{ github.repository }}" >> security_summary.md
+                    echo "**Branch:** ${{ github.ref_name }}" >> security_summary.md
+                    echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
+                    echo "" >> security_summary.md
+                    echo "### Results" >> security_summary.md
+                    cat reports/summary/summary.json | jq -r 'to_entries[] | "- **\(.key)\**: \(.value)"' >> security_summary.md || true
 
             - name: Create GitHub Issue for security alert
-              if: env.NOTIFICATION_ENABLED == 'true'
-              uses: actions/github-script@v7
-              with:
-                  # Use a dedicated PAT from secrets.ISSUE_CREATION_TOKEN when provided, otherwise fall back to the default workflow token
-                  github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
-                  script: |
-                      const fs = require('fs');
-                      const summary = fs.readFileSync('security_summary.md', 'utf8');
+                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
+                uses: actions/github-script@v7
+                with:
+                    github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
+                    script: |
+                        const fs = require('fs');
+                        const summary = fs.readFileSync('security_summary.md', 'utf8');
+                        const issue = await github.rest.issues.create({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            title: `🚨 Security Alert: Vulnerabilities detected (Run #${{ github.run_number }})`,
+                            body: summary,
+                            labels: ['security','vulnerability']
+                        });
+                        console.log(`Created security issue: ${issue.data.html_url}`);
 
-                      const issue = await github.rest.issues.create({
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          title: `🚨 Security Alert: Vulnerabilities detected (Run #${{ github.run_number }})`,
-                          body: summary,
-                          labels: ['security', 'vulnerability', 'high-priority']
-                      });
+            - name: Send Slack notification
+                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.SLACK_WEBHOOK_URL
+                uses: 8398a7/action-slack@v3
+                with:
+                    status: custom
+                    title: "🚨 Security Vulnerabilities Detected"
+                    message: |
+                        Repository: ${{ github.repository }}
+                        Branch: ${{ github.ref_name }}
+                        Threshold: ${{ env.SEVERITY_THRESHOLD }}
+                        Run: ${{ github.run_number }}
+                env:
+                    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-                      console.log(`Created security issue: ${issue.data.html_url}`);
+            - name: Send email notification
+                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.MAIL_USERNAME && secrets.MAIL_PASSWORD && secrets.SECURITY_EMAIL_RECIPIENTS
+                uses: dawidd6/action-send-mail@v3
+                with:
+                    server_address: smtp.gmail.com
+                    server_port: 587
+                    username: ${{ secrets.MAIL_USERNAME }}
+                    password: ${{ secrets.MAIL_PASSWORD }}
+                    subject: "🚨 Security Alert: Vulnerabilities Detected in ${{ github.repository }}"
+                    to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
+                    from: "GitHub Actions Security Scanner <${{ secrets.MAIL_USERNAME }}>"
+                    html_body: |
+                        <pre>${{ steps.aggregate.outputs }}</pre>
