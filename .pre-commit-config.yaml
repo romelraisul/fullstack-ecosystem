@@ -17,7 +17,7 @@ repos:
         always_run: true
         verbose: true
         exclude: ^autogen/
-        
+
       # Code linting (check only, no auto-fix in pre-commit)
       - id: lint-code
         name: Lint code (ruff + flake8)
@@ -28,7 +28,7 @@ repos:
         always_run: false
         verbose: true
         exclude: '^(autogen/|scripts/|tests/)'
-        
+
       # Type checking
       - id: type-check
         name: Type checking (mypy)
@@ -39,7 +39,7 @@ repos:
         always_run: false
         verbose: true
         exclude: '^(autogen/|scripts/|tests/)'
-        
+
       # Fast test subset (unit tests, quick validation)
       - id: test-fast
         name: Fast tests (unit tests only)
@@ -62,7 +62,7 @@ repos:
         verbose: true
         stages: [pre-push]
         exclude: '^(autogen/|scripts/|tests/)'
-        
+
       # Documentation linting (runs on push) - Skip if markdownlint not available
       - id: lint-docs
         name: Lint documentation
@@ -101,7 +101,7 @@ repos:
   #     - id: bandit
   #       args: ['-r', '.', '-f', 'json', '-o', 'bandit-report.json']
   #       exclude: 'tests/.*'
-        
+
   # Additional Python code quality
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.1.3
