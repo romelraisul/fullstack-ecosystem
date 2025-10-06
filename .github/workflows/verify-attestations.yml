@@ -1,0 +1,132 @@
+name: Verify Image Attestations
+
+on:
+    workflow_call:
+        inputs:
+            images_json:
+                description: 'JSON array of image references (e.g. ["ghcr.io/org/repo:tag"])'
+                required: true
+                type: string
+            predicate_type:
+                description: "Predicate type to verify (spdxjson|cyclonedx|slsaprovenance|securitymanifest)"
+                required: false
+                default: "spdxjson"
+                type: string
+            predicate_types_json:
+                description: 'JSON array of predicate types to verify (overrides predicate_type if provided). Example: ["spdxjson","cyclonedx"]'
+                required: false
+                type: string
+            require_all:
+                description: "Fail if any image lacks a verified attestation"
+                required: false
+                default: "true"
+                type: string
+            oidc_issuer:
+                description: "Expected OIDC issuer (regex)"
+                required: false
+                default: "https://token.actions.githubusercontent.com"
+                type: string
+            identity_regexp:
+                description: "Certificate identity regexp (empty to allow any)"
+                required: false
+                default: ".*"
+                type: string
+
+permissions:
+    contents: read
+    packages: read
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        env:
+            COSIGN_VERSION: v2.2.4
+        steps:
+            - name: Prepare images list
+              id: prep
+              run: |
+                  set -e
+                  raw='${{ inputs.images_json }}'
+                  echo "$raw" | jq -e '.' >/dev/null 2>&1 || { echo 'images_json must be valid JSON' >&2; exit 1; }
+                  echo "$raw" | jq -r '.[]' > images.txt
+                  count=$(wc -l < images.txt | tr -d ' ')
+                  echo "count=$count" >> $GITHUB_OUTPUT
+                  echo "Verifying $count images"
+
+            - name: Install cosign
+              run: |
+                  curl -sSfL https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
+                  chmod +x /usr/local/bin/cosign
+                  cosign version || true
+
+            - name: Verify attestations (single or multi-predicate)
+              id: verify
+              run: |
+                  set -e
+                  OIDC='${{ inputs.oidc_issuer }}'
+                  IDRE='${{ inputs.identity_regexp }}'
+                  ALL_REQ='${{ inputs.require_all }}'
+                  SINGLE_TYPE='${{ inputs.predicate_type }}'
+                  TYPES_JSON='${{ inputs.predicate_types_json }}'
+                  if [ -n "$TYPES_JSON" ]; then
+                    echo "$TYPES_JSON" | jq -e '.' >/dev/null 2>&1 || { echo 'predicate_types_json must be valid JSON array' >&2; exit 1; }
+                    mapfile -t TYPES < <(echo "$TYPES_JSON" | jq -r '.[]')
+                  else
+                    TYPES=($SINGLE_TYPE)
+                  fi
+                  mkdir -p results combined
+                  summary_tmp=summary.json
+                  echo '{}' | jq '.' > $summary_tmp
+                  total_fail=0
+                  total_pass=0
+                  for TYPE in "${TYPES[@]}"; do
+                    echo "Processing predicate type: $TYPE" >&2
+                    pass=0
+                    fail=0
+                    while read -r img; do
+                      [ -z "$img" ] && continue
+                      safe=$(echo $img | tr '/:@' '____')
+                      log="results/${safe}__${TYPE}.log"
+                      echo "Verifying $TYPE attestation for $img" >&2
+                      if cosign verify-attestation --type "$TYPE" "$img" --certificate-oidc-issuer "$OIDC" --certificate-identity-regexp "$IDRE" > "$log" 2>&1; then
+                        echo "$img OK"
+                        pass=$((pass+1))
+                      else
+                        echo "$img FAIL" >&2
+                        fail=$((fail+1))
+                      fi
+                    done < images.txt
+                    total_pass=$((total_pass+pass))
+                    total_fail=$((total_fail+fail))
+                    # Merge into summary
+                    echo "Updating summary for $TYPE: pass=$pass fail=$fail" >&2
+                    tmpf=$(mktemp)
+                    jq --arg t "$TYPE" --argjson p $pass --argjson f $fail '. + {($t): {passed:$p, failed:$f}}' $summary_tmp > $tmpf && mv $tmpf $summary_tmp
+                  done
+                  echo "passed=$total_pass" >> $GITHUB_OUTPUT
+                  echo "failed=$total_fail" >> $GITHUB_OUTPUT
+                  cp $summary_tmp combined/predicate-summary.json
+                  if [ "$ALL_REQ" = 'true' ] && [ "$total_fail" -gt 0 ]; then
+                    echo "Attestation verification failures: $total_fail" >&2
+                    exit 1
+                  fi
+                  # best-effort mode otherwise
+
+            - name: Upload verification logs
+              uses: actions/upload-artifact@v4
+              with:
+                  name: attestation-verify-logs
+                  path: |
+                      results
+                      combined/predicate-summary.json
+
+            - name: Summary
+              run: |
+                  echo "### Attestation Verification" >> $GITHUB_STEP_SUMMARY
+                  if [ -n "${{ inputs.predicate_types_json }}" ]; then
+                    echo "Predicates (multi): ${{ inputs.predicate_types_json }}" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "Predicate: ${{ inputs.predicate_type }}" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  echo "Images: ${{ steps.prep.outputs.count }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Passed: ${{ steps.verify.outputs.passed }}  Failed: ${{ steps.verify.outputs.failed }}" >> $GITHUB_STEP_SUMMARY

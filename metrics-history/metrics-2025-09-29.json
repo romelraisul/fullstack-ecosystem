@@ -1,0 +1,39 @@
+{
+  "generated_at": "2025-09-29T02:01:11.694016Z",
+  "last_updated": "2025-09-29T00:00:00Z",
+  "age_days": 0,
+  "total_alerts": 2,
+  "deprecated_alerts": 0,
+  "deprecated_percent": 0.0,
+  "added_30d": [
+    "HighErrorRate_ServiceA",
+    "HighLatency_ServiceB"
+  ],
+  "removed_30d": [],
+  "churn_30d": 2,
+  "baseline_commit_30d": null,
+  "baseline_commit_timestamp": null,
+  "stability_score": 0.0,
+  "stability_percent": 0.0,
+  "runbook_completeness_percent": 50.0,
+  "active_alerts": 2,
+  "runbooks_complete": 1,
+  "runbook_sla": {
+    "count": 1,
+    "median_days": 27,
+    "avg_days": 27.0,
+    "max_days": 27
+  },
+  "risk_churn_30d": 5,
+  "risk_stability_score": 0.0,
+  "risk_stability_percent": 0.0,
+  "severity_weights": {
+    "critical": 5,
+    "high": 3,
+    "medium": 2,
+    "low": 1
+  },
+  "weighted_added_30d": 5,
+  "weighted_removed_30d": 0,
+  "current_weight_total": 5
+}

@@ -1,0 +1,96 @@
+name: Container Sign & Provenance (Cosign)
+
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: "Image tag to build & sign (e.g., v1.2.3)"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # Needed for keyless signing
+
+jobs:
+  build-sign:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - Dockerfile.orchestrator
+          - Dockerfile.smoke
+          - autogen/Dockerfile.topics
+          - autogen/backend/Dockerfile.prod
+          - autogen/backend/Dockerfile.production
+    env:
+      IMAGE_REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.6.0
+        with:
+          cosign-release: "v2.2.4"
+      - name: Determine Tag
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.imageTag }}" ]; then TAG=${{ github.event.inputs.imageTag }}; else TAG=${GITHUB_REF_NAME}; fi
+          # Create a slug from dockerfile path
+          SLUG=$(echo "${{ matrix.dockerfile }}" | tr '/.' '-' )
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "slug=$SLUG" >> $GITHUB_OUTPUT
+      - name: Build Image
+        run: |
+          docker build -f ${{ matrix.dockerfile }} -t $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }} .
+          docker push $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }}
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --format cyclonedx --output sbom-${{ steps.meta.outputs.slug }}.cdx.json $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }} || true
+      - name: Sign Image (keyless)
+        run: |
+          cosign sign --yes $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }}
+      - name: Attach SBOM Attestation
+        run: |
+          if [ -f sbom-${{ steps.meta.outputs.slug }}.cdx.json ]; then
+            cosign attest --predicate sbom-${{ steps.meta.outputs.slug }}.cdx.json --type cyclonedx --yes $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }}
+          fi
+      - name: Generate Provenance Predicate
+        run: |
+          cat > provenance-${{ steps.meta.outputs.slug }}.json <<EOF
+          {
+            "buildType": "custom:docker-matrix-build",
+            "invocation": {
+              "parameters": {
+                "dockerfile": "${{ matrix.dockerfile }}",
+                "git_sha": "${{ github.sha }}",
+                "ref": "${{ github.ref }}"
+              }
+            },
+            "metadata": {
+              "buildStartedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "repo": "${{ github.repository }}"
+            }
+          }
+          EOF
+      - name: Attest Provenance (SLSA draft)
+        run: |
+          cosign attest --predicate provenance-${{ steps.meta.outputs.slug }}.json --type slsa-provenance --yes $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }} || true
+      - name: Verify (sample)
+        run: |
+          cosign verify $IMAGE_REGISTRY/${IMAGE_NAME}:${{ steps.meta.outputs.tag }}-${{ steps.meta.outputs.slug }} || true

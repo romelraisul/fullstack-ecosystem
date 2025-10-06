@@ -1,0 +1,90 @@
+﻿[
+    {
+        "Name":  "UltimateEnterpriseSummary",
+        "Port":  5099,
+        "PID":  null,
+        "Running":  true,
+        "URL":  "http://localhost:5099",
+        "Health":  "/",
+        "Script":  "autogen/ultimate_enterprise_summary.py",
+        "Type":  "python",
+        "HealthStatus":  "up"
+    },
+    {
+        "Name":  "AdvancedBackend",
+        "Port":  8011,
+        "PID":  43384,
+        "Running":  true,
+        "URL":  "http://localhost:8011",
+        "Health":  "/health",
+        "Script":  "autogen/advanced_backend.py",
+        "Type":  "python",
+        "HealthStatus":  "up"
+    },
+    {
+        "Name":  "AdvancedMonitoringStack",
+        "Port":  5025,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5025",
+        "Health":  "/",
+        "Script":  "autogen/advanced_monitoring_stack.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    },
+    {
+        "Name":  "APIMonetizationPortal",
+        "Port":  5026,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5026",
+        "Health":  "/",
+        "Script":  "autogen/api_monetization_portal.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    },
+    {
+        "Name":  "AdvancedSecurityCenter",
+        "Port":  5019,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5019",
+        "Health":  "/",
+        "Script":  "autogen/advanced_security_center.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    },
+    {
+        "Name":  "AIMLExpansionSuite",
+        "Port":  5010,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5010",
+        "Health":  "/",
+        "Script":  "autogen/ai_ml_expansion_suite.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    },
+    {
+        "Name":  "AdvancedSecurityCompliance",
+        "Port":  5008,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5008",
+        "Health":  "/",
+        "Script":  "autogen/advanced_security_compliance.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    },
+    {
+        "Name":  "BlockchainCryptoPlatform",
+        "Port":  5205,
+        "PID":  null,
+        "Running":  false,
+        "URL":  "http://localhost:5205",
+        "Health":  "/",
+        "Script":  "blockchain_crypto_platform.py",
+        "Type":  "python",
+        "HealthStatus":  "down"
+    }
+]

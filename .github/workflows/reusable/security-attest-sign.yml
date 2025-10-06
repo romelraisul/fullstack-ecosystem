@@ -1,0 +1,118 @@
+name: Security Attest & Sign
+
+on:
+    workflow_call:
+        inputs:
+            image-ref:
+                type: string
+                required: false
+            sign-artifacts:
+                type: boolean
+                required: false
+                default: false
+            sbom_digest:
+                type: string
+                required: false
+                description: SHA256 digest of the CycloneDX SBOM passed from build/scan
+        outputs:
+            effective_digest:
+                description: Effective image digest (real or synthetic)
+                value: ${{ jobs.attest.outputs.effective_digest }}
+            manifest_digest:
+                description: Manifest internal digest if produced
+                value: ${{ jobs.attest.outputs.manifest_digest }}
+
+jobs:
+    attest:
+        runs-on: ubuntu-latest
+        env:
+            COSIGN_VERSION: v2.2.4
+        outputs:
+            effective_digest: ${{ steps.eff.outputs.digest }}
+            manifest_digest: ${{ steps.man.outputs.manifest_sha256 }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Compatibility notice
+              run: |
+                  echo "Hyphenated input 'sbom-digest' and outputs 'effective-digest','manifest-digest' removed. Use 'sbom_digest','effective_digest','manifest_digest'." >&2
+
+            - name: Cache cosign binary
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/cosign
+                  key: cosign-${{ env.COSIGN_VERSION }}-${{ runner.os }}
+                  restore-keys: |
+                      cosign-${{ env.COSIGN_VERSION }}-
+
+            - name: Download sbom & provenance
+              uses: actions/download-artifact@v4
+              with:
+                  name: sbom-provenance
+                  path: ./sbom
+              continue-on-error: true
+
+            - name: Init digests (reuse SBOM digest if provided)
+              id: eff
+              run: |
+                  if [ -n "${{ inputs.sbom_digest }}" ]; then
+                    echo "digest=${{ inputs.sbom_digest }}" >> $GITHUB_OUTPUT
+                    exit 0
+                  fi
+                  if [ -f sbom/provenance-lite.json ]; then
+                    dig=$(jq -r '.sha1? // empty' sbom/provenance-lite.json)
+                    if [ -n "$dig" ]; then
+                      echo "digest=$dig" >> $GITHUB_OUTPUT
+                      exit 0
+                    fi
+                  fi
+                  echo "digest=synthetic" >> $GITHUB_OUTPUT
+
+            - name: Install cosign
+              run: |
+                  mkdir -p ~/.cache/cosign
+                  if [ -f ~/.cache/cosign/cosign-${COSIGN_VERSION} ]; then
+                    cp ~/.cache/cosign/cosign-${COSIGN_VERSION} cosign
+                  else
+                    curl -sSfL https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64 -o cosign
+                    cp cosign ~/.cache/cosign/cosign-${COSIGN_VERSION} || true
+                  fi
+                  chmod +x cosign
+
+            - name: Sign artifacts (optional)
+              if: ${{ inputs.sign-artifacts }}
+              id: man
+              run: |
+                  echo '{}' > security-manifest.json
+                  if ./cosign sign-blob --yes security-manifest.json --output-signature manifest.sig --output-certificate manifest.pem; then
+                    if command -v sha256sum >/dev/null 2>&1; then
+                      sha=$(sha256sum security-manifest.json | awk '{print $1}')
+                    else
+                      sha=$(shasum -a 256 security-manifest.json | awk '{print $1}')
+                    fi
+                    echo "manifest_sha256=$sha" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Upload attestation artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: provenance-attestation
+                  path: |
+                      security-manifest.json
+                      manifest.sig
+                      manifest.pem
+              continue-on-error: true
+
+            - name: Phase metrics
+              run: |
+                  START=$(date -u +%s)
+                  END=$(date -u +%s)
+                  DIGEST="${{ steps.eff.outputs.digest }}"
+                  jq -n --arg start "$START" --arg end "$END" --arg dig "$DIGEST" '{phase:"attest-sign",start:($start|tonumber),end:($end|tonumber),effective_digest:$dig}' > metrics-attest-sign.json
+
+            - name: Upload phase metrics
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-attest-sign
+                  path: metrics-attest-sign.json

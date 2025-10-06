@@ -1,0 +1,230 @@
+name: schema-governance-reusable
+
+on:
+    workflow_call:
+        inputs:
+            allow_breaking:
+                description: "Set to 1 to override breaking change gate"
+                required: false
+                default: "0"
+                type: string
+        outputs:
+            breaking:
+                description: "Whether breaking changes were detected"
+                value: ${{ jobs.export.outputs.breaking }}
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: schema-governance-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    export:
+        name: Export & Lint Schema (Reusable)
+        runs-on: ubuntu-latest
+        outputs:
+            breaking: ${{ steps.breaking_gate.outputs.breaking }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Cache pip
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/pip
+                  key: pip-${{ runner.os }}-${{ hashFiles('governance_app/requirements.txt') }}
+                  restore-keys: |
+                      pip-${{ runner.os }}-
+
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Install deps
+              run: |
+                  python -m pip install --upgrade pip
+                  if [ -f governance_app/requirements.txt ]; then pip install -r governance_app/requirements.txt; fi
+                  pip install fastapi uvicorn
+                  npm install -g @stoplight/spectral-cli
+
+            - name: Derive version
+              id: version
+              run: |
+                  DATE_TAG=$(date +%Y.%m.%d)
+                  SHORT_SHA=${GITHUB_SHA::7}
+                  echo "version=${DATE_TAG}+${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+            - name: Export OpenAPI schema
+              env:
+                  GOVERNANCE_VERSION: ${{ steps.version.outputs.version }}
+              run: |
+                  python scripts/export_openapi_schema.py --out openapi-governance.json
+
+            - name: Fetch previous schema (if exists)
+              if: github.ref == 'refs/heads/main'
+              run: |
+                  git fetch origin schemas:refs/remotes/origin/schemas || true
+                  mkdir -p previous
+                  if git show-ref --quiet refs/remotes/origin/schemas; then
+                    git show origin/schemas:schemas/openapi-governance.json > previous/old.json || echo '{}' > previous/old.json
+                  else
+                    echo '{}' > previous/old.json
+                  fi
+
+            - name: Schema diff
+              run: |
+                  python scripts/diff_openapi_schema.py --old previous/old.json --new openapi-governance.json --json-out diff.json | tee diff-summary.txt
+                  echo "## OpenAPI Diff" >> $GITHUB_STEP_SUMMARY
+                  sed -e 's/^/    /' diff-summary.txt >> $GITHUB_STEP_SUMMARY || true
+                  if [ -f diff.json ]; then echo "\n<details><summary>Machine-readable diff</summary>\n" >> $GITHUB_STEP_SUMMARY; cat diff.json >> $GITHUB_STEP_SUMMARY; echo "\n</details>" >> $GITHUB_STEP_SUMMARY; fi
+
+            - name: Cache openapi-diff jar
+              if: github.ref == 'refs/heads/main'
+              id: diffjar
+              uses: actions/cache@v4
+              with:
+                  path: openapi-diff.jar
+                  key: openapi-diff-2.2.0
+
+            - name: Download openapi-diff jar (if cache miss)
+              if: github.ref == 'refs/heads/main' && steps.diffjar.outputs.cache-hit != 'true'
+              run: |
+                  curl -sSL https://repo1.maven.org/maven2/org/openapitools/openapi-diff-core/2.2.0/openapi-diff-core-2.2.0-all.jar -o openapi-diff.jar
+
+            - name: Breaking change detection (openapi-diff)
+              if: github.ref == 'refs/heads/main'
+              env:
+                  ALLOW_BREAKING: ${{ inputs.allow_breaking }}
+              id: breaking_gate
+              run: |
+                  set -e
+                  if [ ! -f previous/old.json ]; then echo "No previous schema; skipping diff gate"; echo "breaking=false" >> $GITHUB_OUTPUT; exit 0; fi
+                  java -jar openapi-diff.jar --fail-on-incompatible previous/old.json openapi-governance.json > breaking-diff.txt || BREAKING=$?
+                  TOTAL=$(wc -l < breaking-diff.txt || echo 0)
+                  INCOMPAT=$(grep -Ei '(Incompatible|incompatible|deleted|required changed|response changed)' breaking-diff.txt | wc -l || echo 0)
+                  echo "Breaking change summary: $INCOMPAT potential breaking lines out of $TOTAL" >> $GITHUB_STEP_SUMMARY
+                  if [ -n "$BREAKING" ]; then
+                    echo "breaking=true" >> $GITHUB_OUTPUT
+                    if [ "${ALLOW_BREAKING}" = "1" ]; then
+                      echo "ALLOW_BREAKING override set; continuing" >&2
+                      exit 0
+                    else
+                      echo "Breaking changes detected; failing" >&2
+                      exit 1
+                    fi
+                  else
+                    echo "breaking=false" >> $GITHUB_OUTPUT
+                    echo "No breaking changes detected" >> $GITHUB_STEP_SUMMARY
+                  fi
+
+            - name: Parse breaking report to JSON
+              if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+              run: |
+                  python scripts/parse_openapi_breaking_report.py \
+                    --input breaking-diff.txt \
+                    --output breaking-diff.json \
+                    --config scripts/breaking_patterns.json \
+                    --badge-json breaking-badge.json \
+                    --status-json breaking-status.json || echo '{}' > breaking-diff.json
+
+            - name: Append status history & publish badge
+              if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+              run: |
+                  SCHEMA_BRANCH="schemas"
+                  git fetch origin $SCHEMA_BRANCH || true
+                  if git ls-remote --exit-code origin $SCHEMA_BRANCH >/dev/null 2>&1; then
+                    git checkout $SCHEMA_BRANCH
+                  else
+                    git checkout --orphan $SCHEMA_BRANCH
+                  fi
+                  mkdir -p status
+                  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                  # Append line-delimited JSON history (schema version + counters)
+                  if [ -f ../breaking-diff.json ]; then mv ../breaking-diff.json breaking-diff.json || true; fi
+                  cp breaking-diff.json status/breaking-diff.json || true
+                  cp breaking-badge.json status/breaking-badge.json || true
+                  cp breaking-status.json status/breaking-status.json || true
+                  jq -c --arg ts "$ts" '.summary + {timestamp:$ts}' status/breaking-diff.json >> status/history.jsonl || echo '{}' >> status/history.jsonl
+                  git add status/*.json status/history.jsonl || true
+                  if git diff --cached --quiet; then
+                    echo "No status changes to commit"
+                  else
+                    git commit -m "chore(status): update breaking status artifacts"
+                    git push origin $SCHEMA_BRANCH
+                  fi
+
+            - name: Auto-file breaking issue
+              if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const fs = require('fs');
+                      let payload = {};
+                      if (fs.existsSync('breaking-status.json')) payload = JSON.parse(fs.readFileSync('breaking-status.json','utf8'));
+                      const title = `Breaking API changes detected (${process.env.GITHUB_SHA.substring(0,7)})`;
+                      const body = [
+                        'Automated detection of breaking API changes (reusable workflow).',
+                        '',
+                        'Status JSON:', '```json', JSON.stringify(payload, null, 2), '```'
+                      ].join('\n');
+                      const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+                      if (!issues.find(i => i.title === title)) {
+                        await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['api-breaking','automated'] });
+                      } else { core.info('Existing issue found; skipping'); }
+
+            - name: Lint OpenAPI (Spectral)
+              run: spectral lint openapi-governance.json
+
+            - name: Commit schema to schemas branch
+              if: github.ref == 'refs/heads/main'
+              env:
+                  GIT_AUTHOR_NAME: github-actions
+                  GIT_AUTHOR_EMAIL: github-actions@users.noreply.github.com
+                  GIT_COMMITTER_NAME: github-actions
+                  GIT_COMMITTER_EMAIL: github-actions@users.noreply.github.com
+              run: |
+                  SCHEMA_BRANCH="schemas"
+                  git fetch origin $SCHEMA_BRANCH || true
+                  if git ls-remote --exit-code origin $SCHEMA_BRANCH >/dev/null 2>&1; then
+                    git checkout $SCHEMA_BRANCH
+                  else
+                    git checkout --orphan $SCHEMA_BRANCH
+                  fi
+                  mkdir -p schemas
+                  cp openapi-governance.json schemas/openapi-governance.json
+                  git add schemas/openapi-governance.json
+                  if git diff --cached --quiet; then
+                    echo "No schema changes to commit"
+                  else
+                    git commit -m "chore(schema): update openapi-governance.json"
+                    git push origin $SCHEMA_BRANCH
+                  fi
+
+            - name: Upload schema artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: openapi-governance
+                  path: |
+                      openapi-governance.json
+                      diff.json
+                  if-no-files-found: error
+            - name: Upload breaking diff artifacts
+              if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: breaking-diff
+                  path: |
+                      breaking-diff.txt
+                      breaking-diff.json
+                      breaking-badge.json
+                      breaking-status.json
+                  if-no-files-found: error

@@ -1,0 +1,132 @@
+name: Nightly Quantile Benchmark
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  nightly-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore artifact cache
+        id: cache-artifacts
+        uses: actions/cache@v4
+        with:
+          path: artifacts
+          key: quant-bench-nightly
+          restore-keys: |
+            quant-bench-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install prometheus_client
+
+      - name: Run benchmark
+        env:
+          BENCH_COMMIT: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          ts=$(date +%Y%m%d_%H%M%S)
+          python scripts/benchmark_metrics_quantiles.py --json-out artifacts/quantile_bench_${ts}.json
+
+      - name: Integrity check (ensure new artifact exists)
+        run: |
+          new_count=$(ls artifacts/quantile_bench_*.json 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$new_count" -eq 0 ]; then
+            echo 'No benchmark artifacts found after run step';
+            exit 1;
+          fi
+          echo "Artifact count: $new_count"
+
+      - name: Prune old artifacts (keep last 100)
+        run: |
+          python scripts/prune_benchmark_artifacts.py --dir artifacts --keep 100 || true
+
+      - name: Aggregate history
+        run: |
+          python scripts/aggregate_quantile_benchmarks.py --input-glob "artifacts/quantile_bench_*.json" \
+            --json-out artifacts/aggregate.json --markdown-out artifacts/aggregate.md --rolling-window 14 || true
+
+      - name: Generate badges
+        run: |
+          if [ -f artifacts/aggregate.json ]; then
+            batch=$(jq -r '.latest.batch_speedup' artifacts/aggregate.json)
+            indiv=$(jq -r '.latest.individual_speedup' artifacts/aggregate.json)
+            best=$(jq -r '[.history[].batch_speedup] | max' artifacts/aggregate.json 2>/dev/null || echo 0)
+            if ! echo "$batch" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then batch=0; fi
+            if ! echo "$indiv" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then indiv=0; fi
+            if ! echo "$best" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then best=$batch; fi
+            batch_color=$(python -c "v=float('$batch');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            indiv_color=$(python -c "v=float('$indiv');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            best_color=$(python -c "v=float('$best');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            printf '{"schemaVersion":1,"label":"batch speedup","message":"%.2fx","color":"%s"}' "$batch" "$batch_color" > artifacts/batch_speedup_badge.json
+            printf '{"schemaVersion":1,"label":"indiv speedup","message":"%.2fx","color":"%s"}' "$indiv" "$indiv_color" > artifacts/individual_speedup_badge.json
+            printf '{"schemaVersion":1,"label":"best batch speedup","message":"%.2fx","color":"%s"}' "$best" "$best_color" > artifacts/best_speedup_badge.json
+          else
+            echo 'Missing aggregate.json, skipping badges'
+          fi
+
+      - name: Regression gate (nightly)
+        run: |
+          THRESHOLD="${{ vars.BENCH_MIN_SPEEDUP }}"
+          [ -z "$THRESHOLD" ] && THRESHOLD="1.05"
+          if [ -f artifacts/aggregate.json ]; then
+            batch=$(jq -r '.latest.batch_speedup' artifacts/aggregate.json)
+            python -c "import sys;batch=float('$batch');th=float('$THRESHOLD');print(f'Nightly gate: batch {batch:.2f}x vs threshold {th:.2f}x');sys.exit(1 if batch < th else 0)"
+          else
+            echo 'No aggregate.json for gate'; exit 1
+          fi
+
+      - name: Generate HTML index
+        run: |
+          mkdir -p artifacts
+          HTML_BASE64="PD9ET0NUWVBFIEhUTUw+PCEtLSBNaW5pZmljYXRpb24gLS0+PGh0bWwgbGFuZz1cImVuXCI+PGhlYWQ+PG1ldGEgY2hhcnNldD1cIlVURi04XCIgLz48dGl0bGU+UXVhbnRpbGUgQmVuY2htYXJrIERhc2hib2FyZDwvdGl0bGU+PG1ldGEgbmFtZT1cInZpZXdwb3J0XCIgY29udGVudD1cIndpZHRoPWRldmljZS13aWR0aCxp bml0aWFsLXNjYWxlPTEgXCIgLz48c3R5bGU+Ym9keXtmb250LWZhbWlseTpzeXN0ZW0tdWksLWFwcGxlLXN5c3RlbSxTZWd1ZSBVSSxSb2JvdG8sc2Fucy1zZXJpZjtNYXJnaW46MnJlbTts aW5lLWhlaWdodDoxLjR9aGVhZGVyezBtYXJnaW4tYm90dG9tOjEuNXJlbX1jb2Rle2JhY2tncm91bmQ6I2Y0ZjRmNDtwYWRkaW5nOjJwe CA0cHg7Ym9yZGVyLXJhZGl1czo0cHh9LmJhZGdlcyBpbWcge21hcmdpbi1yaWdodDoxMnB4fWZvb3RlcnttYXJnaW4tdG9wOjNyZW07Zm9udC1zaXplOi44NXJlbTtjb2xvcjojNTU1fXByZXtiYWNrZ3JvdW5kOiNmOGY4Zjg7cGFkZGluZzoxcmVtO292ZXJmbG93OmF1dG99PC9zdHlsZT48L2hlYWQ+PGJvZHk+PGhlYWRlcj48 aDE+UXVhbnRpbGUgQmVuY2htYXJrIERhc2hib2FyZDwvaDE+PHA+TmlnaHRseSBwZXJmb3JtYW5jZSBtZXRyaWNzIGZvciBoaXN0b2dyYW0gcXVhbnRpbGUgY2FjaGUgb3B0aW1pemF0aW9u LjwvcD48L2hlYWRlcj48c2VjdGlvbiBjbGFzcz1cImJhZGdlc1wiPjxoMj5CYWRnZXM8L2gyPjxwPjxpbWcgc3JjPVwiYmF0Y2hfc3BlZWR1cF9iYWRnZS5qc29uXCIgYWx0PVwiQmF0Y2gg U3BlZWR1cFwiIC8+IDxpbWcgc3JjPVwiaW5kaXZpZHVhbF9zcGVlZHVwX2JhZGdlLmpzb25cIiBhbHQ9XCJJbmRpdmlkdWFsIFNwZWVkdXBcIiAvPiA8aW1nIHNyYz1cImJlc3Rfc3BlZWR1 cF9iYWRnZS5qc29uXCIgYWx0PVwiQmVzdCBCYXRjaCBTcGVlZHVwXCIgLz48L3A+PC9zZWN0aW9uPjxzZWN0aW9uPjxoMj5MYXRlc3QgQWdncmVnYXRlPC9oMj48cD48YSBocmVmPVwiYWdn cmVnYXRlLmpzb25cIj5hZ2dyZWdhdGUuanNv bjwvYT4gfCA8YSBocmVmPVwiYWdncmVnYXRlLm1kXCI+YWdncmVnYXRlLm1kPC9hPjwvcD48cHJlIGlkPVwibGF0ZXN0LWpzb25cIj5Mb2FkaW5nIGxhdGVzdCBtZXRyaWNzLi4uPC9wcmU+ PC9zZWN0aW9uPjxmb290ZXI+R2VuZXJhdGVkIGJ5IG5pZ2h0bHkgd29ya2Zsb3cuIEJhZGdlIEpTT04gaXMgU2hpZWxkcyBlbmRwb2ludCBmb3JtYXQuIExhc3QgdXBkYXRlZDogPHNwYW4g aWQ9XCJ0c1wiPjwvc3Bhbj48L2Zvb3Rlcj48c2NyaXB0PmZldGNoKCdhZ2dyZWdhdGUuanNvbicpLnRoZW4oci0+c i5qc29uKCkpLnRoZW4oai0+e2RvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdsYXRlc3QtanNvbicpLnRleHRDb250ZW50PUpTT04uc3RyaW5naWZ5KGoubGF0ZXN0LG51bGwsMik7ZG9jdW1l bnQuZ2V0RWxlbWVudEJ5SWQoJ3RzJykudGV4dENvbnRlbnQ9bmV3IERhdGUoKS50b0lTT1N0cmluZygpO30pLmNhdGNoKCgpPT57ZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ2xhdGVzdC1q c29uJykudGV4dENvbnRlbnQ9Jyh1bmF2YWlsYWJsZSknO30pOzwvc2NyaXB0PjwvYm9keT48L2h0bWw+"
+          echo $HTML_BASE64 | base64 -d > artifacts/index.html
+          echo "Wrote artifacts/index.html"
+
+      - name: Save artifact cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts
+          key: quant-bench-nightly
+
+      - name: Publish badges & aggregate to gh-pages
+        if: success()
+        run: |
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@users.noreply.github.com'
+          # Prepare worktree
+          rm -rf gh-pages
+          git fetch origin gh-pages || true
+          git worktree add gh-pages gh-pages || git worktree add gh-pages origin/gh-pages
+          cd gh-pages
+          mkdir -p benchmark
+          cp ../artifacts/batch_speedup_badge.json benchmark/ 2>/dev/null || true
+          cp ../artifacts/individual_speedup_badge.json benchmark/ 2>/dev/null || true
+          cp ../artifacts/best_speedup_badge.json benchmark/ 2>/dev/null || true
+          cp ../artifacts/aggregate.json benchmark/ 2>/dev/null || true
+          cp ../artifacts/aggregate.md benchmark/ 2>/dev/null || true
+          cp ../artifacts/index.html benchmark/ 2>/dev/null || true
+          git add benchmark/*.json benchmark/aggregate.md benchmark/index.html || true
+          if git diff --cached --quiet; then
+            echo 'No badge/aggregate changes to commit.'
+          else
+            git commit -m 'chore: nightly benchmark badge refresh'
+            git push origin HEAD:gh-pages
+          fi

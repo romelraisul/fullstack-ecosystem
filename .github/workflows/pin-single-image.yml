@@ -1,0 +1,107 @@
+name: Pin Single Base Image
+
+on:
+    workflow_dispatch:
+        inputs:
+            dockerfile:
+                description: "Path to Dockerfile to pin"
+                required: false
+                default: "backend/Dockerfile"
+            image_line:
+                description: "Override FROM image (if parsing fails)"
+                required: false
+            branch:
+                description: "Branch to base the pin PR on"
+                required: false
+                default: "main"
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    pin:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.branch }}
+
+            - name: Extract base image
+              id: parse
+              run: |
+                  set -e
+                  DF='${{ inputs.dockerfile }}'
+                  [ -f "$DF" ] || { echo "Dockerfile $DF not found" >&2; exit 1; }
+                  line=$(grep -i '^FROM ' "$DF" | head -n1)
+                  if [ -n "${{ inputs.image_line }}" ]; then line="FROM ${{ inputs.image_line }}"; fi
+                  img=$(echo "$line" | awk '{print $2}')
+                  img=${img%% AS*}
+                  [ -z "$img" ] && { echo 'Could not parse base image' >&2; exit 1; }
+                  # Basic image ref validation (repo[:tag][@digest]) - allows library and nested paths
+                  if ! echo "$img" | grep -Eq '^[a-z0-9]+([._-][a-z0-9]+)*(\/[a-z0-9]+([._-][a-z0-9]+)*)*(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]{64})?$'; then
+                    echo "Image reference failed validation regex: $img" >&2; exit 1;
+                  fi
+                  echo "Base image: $img" >&2
+                  echo "image=$img" >> $GITHUB_OUTPUT
+
+            - name: Resolve digest (registry API)
+              id: digest
+              run: |
+                  set -e
+                  img='${{ steps.parse.outputs.image }}'
+                  # If already has @sha256 skip
+                  if echo "$img" | grep -q '@sha256:'; then
+                    echo "digest=$(echo $img | awk -F'@' '{print $2}')" >> $GITHUB_OUTPUT
+                    echo "pinned=true" >> $GITHUB_OUTPUT
+                    exit 0
+                  fi
+                  repo=${img%:*}
+                  tag=${img##*:}
+                  if [ "$repo" = "$tag" ]; then tag=latest; fi
+                  # Use skopeo for robustness
+                  sudo apt-get update -y && sudo apt-get install -y skopeo jq >/dev/null
+                  out=$(skopeo inspect docker://$repo:$tag || true)
+                  digest=$(echo "$out" | jq -r '.Digest // empty')
+                  if [ -z "$digest" ]; then
+                    echo "Failed to resolve digest" >&2; exit 1
+                  fi
+                  echo "Resolved digest: $digest" >&2
+                  echo "digest=$digest" >> $GITHUB_OUTPUT
+                  echo "pinned=false" >> $GITHUB_OUTPUT
+
+            - name: Patch Dockerfile with digest
+              if: ${{ steps.digest.outputs.pinned != 'true' }}
+              run: |
+                  set -e
+                  DF='${{ inputs.dockerfile }}'
+                  digest='${{ steps.digest.outputs.digest }}'
+                    img='${{ steps.parse.outputs.image }}'
+                  pinned="$img@$digest"
+                  # If already pinned exactly (idempotency guard)
+                  if grep -i -q "FROM $pinned" "$DF"; then
+                    echo "Dockerfile already contains pinned reference $pinned"; exit 0; fi
+                  # Replace only the first FROM line occurrence
+                  awk -v repl="$pinned" 'BEGIN{IGNORECASE=1} /^FROM / && !done {print "FROM " repl " # pinned for reproducible builds"; done=1; next} {print}' "$DF" > "$DF.new"
+                  mv "$DF.new" "$DF"
+                  echo "Pinned to $pinned"
+
+            - name: Commit & PR
+              if: ${{ steps.digest.outputs.pinned != 'true' }}
+              uses: peter-evans/create-pull-request@v6
+              with:
+                  commit-message: "chore: pin base image digest"
+                  branch: chore/pin-base-image
+                  title: "chore: pin base image digest"
+                  body: |
+                      Automated digest pin for `${{ steps.parse.outputs.image }}` -> `${{ steps.digest.outputs.digest }}`.
+                      Ensures reproducible builds.
+                  labels: security, supply-chain
+                  signoff: true
+
+            - name: Summary
+              run: |
+                  echo "### Digest Pin Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "Image: ${{ steps.parse.outputs.image }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Digest: ${{ steps.digest.outputs.digest || 'already pinned' }}" >> $GITHUB_STEP_SUMMARY

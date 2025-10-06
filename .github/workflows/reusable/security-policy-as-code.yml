@@ -1,0 +1,58 @@
+name: Security Policy-as-Code
+on:
+    workflow_call:
+        outputs:
+            conftest-status:
+                description: Conftest evaluation status
+                value: ${{ jobs.conftest.outputs.status }}
+
+jobs:
+    conftest:
+        runs-on: ubuntu-latest
+        outputs:
+            status: ${{ steps.run.outputs.policy_status }}
+        steps:
+            - name: Capture phase start
+              id: phase_start
+              run: echo "start_ts=$(date -u +%s)" >> $GITHUB_OUTPUT
+            - uses: actions/checkout@v4
+            - name: Download policy evaluation
+              uses: actions/download-artifact@v4
+              with:
+                  name: policy-evaluation
+                  path: ./policy
+            - name: Install Conftest
+              run: |
+                  curl -sSfL https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_$(uname -s | tr '[:upper:]' '[:lower:]')_amd64.tar.gz -o conftest.tgz
+                  tar -xzf conftest.tgz conftest
+                  sudo mv conftest /usr/local/bin/
+                  conftest --version
+            - name: Run Conftest
+              id: run
+              run: |
+                  mkdir -p bundle
+                  cp .github/policy/*.rego bundle/
+                  if ! conftest test --no-color --policy bundle policy/policy-evaluation.json > conftest.out 2>&1; then
+                    echo "policy_status=fail" >> $GITHUB_OUTPUT
+                  else
+                    echo "policy_status=pass" >> $GITHUB_OUTPUT
+                  fi
+                  cat conftest.out || true
+            - name: Upload results
+              uses: actions/upload-artifact@v4
+              with:
+                  name: conftest-results
+                  path: conftest.out
+            - name: Emit phase metrics
+              if: always()
+              run: |
+                  START=${{ steps.phase_start.outputs.start_ts || '0' }}
+                  END=$(date -u +%s)
+                  DURATION=$((END-START))
+                  jq -n --arg start "$START" --arg end "$END" --arg dur "$DURATION" '{phase:"policy-as-code",start:($start|tonumber),end:($end|tonumber),duration_sec:($dur|tonumber)}' > metrics-policy-as-code.json
+            - name: Upload phase metrics
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-policy-as-code
+                  path: metrics-policy-as-code.json

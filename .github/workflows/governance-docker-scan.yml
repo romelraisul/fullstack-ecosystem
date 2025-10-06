@@ -1,0 +1,66 @@
+name: governance-docker-scan
+
+on:
+    push:
+        paths:
+            - "governance_app/**"
+            - ".github/workflows/governance-docker-scan.yml"
+    pull_request:
+        paths:
+            - "governance_app/**"
+            - ".github/workflows/governance-docker-scan.yml"
+    schedule:
+        - cron: "0 3 * * *"
+
+jobs:
+    build-and-scan:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            security-events: write
+            actions: read
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python (for potential future test stages)
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Build image
+              run: |
+                  docker build -t governance-app:ci -f governance_app/Dockerfile .
+
+            - name: Generate SBOM (syft)
+              uses: anchore/sbom-action@v0
+              with:
+                  image: governance-app:ci
+                  output-file: sbom-governance-app.spdx.json
+
+            - name: Upload SBOM artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sbom-governance-app
+                  path: sbom-governance-app.spdx.json
+
+            - name: Security scan (trivy)
+              uses: aquasecurity/trivy-action@0.20.0
+              with:
+                  image-ref: "governance-app:ci"
+                  format: "sarif"
+                  output: "trivy-governance-app.sarif"
+                  vuln-type: "os,library"
+                  severity: "CRITICAL,HIGH,MEDIUM"
+
+            - name: Upload Trivy SARIF
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: trivy-governance-app.sarif
+
+            - name: Fail on critical vulns
+              run: |
+                  if grep -q '"severity":"CRITICAL"' trivy-governance-app.sarif; then
+                    echo 'Critical vulnerabilities detected';
+                    exit 1;
+                  fi

@@ -1,0 +1,52 @@
+name: Build Windows Installer
+
+on:
+    workflow_dispatch:
+    push:
+        branches: [master]
+
+jobs:
+    build-windows-installer:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+                  pip install pyinstaller
+            - name: Build .exe with PyInstaller
+              run: |
+                  cd autogen
+                  pyinstaller --onefile --hidden-import=uvicorn --hidden-import=fastapi advanced_backend.py
+            - name: Download Inno Setup
+              run: |
+                  choco install innosetup -y
+            - name: Prepare Inno Setup Script
+              run: |
+                  echo "[Setup]" > installer.iss
+                  echo "AppName=Fullstack Ecosystem Backend" >> installer.iss
+                  echo "AppVersion=1.0" >> installer.iss
+                  echo "DefaultDirName={pf}\\FullstackEcosystem" >> installer.iss
+                  echo "DefaultGroupName=Fullstack Ecosystem" >> installer.iss
+                  echo "OutputDir=dist" >> installer.iss
+                  echo "OutputBaseFilename=FullstackEcosystemInstaller" >> installer.iss
+                  echo "[Files]" >> installer.iss
+                  echo "Source: \"autogen\\dist\\advanced_backend.exe\"; DestDir: \"{app}\"; Flags: ignoreversion" >> installer.iss
+                  echo "[Icons]" >> installer.iss
+                  echo "Name: \"{group}\\Fullstack Backend\"; Filename: \"{app}\\advanced_backend.exe\"" >> installer.iss
+                  echo "Name: \"{group}\\Uninstall\"; Filename: \"{uninstallexe}\"" >> installer.iss
+                  echo "[Run]" >> installer.iss
+                  echo "Filename: \"{app}\\advanced_backend.exe\"; Description: \"Run Backend\"; Flags: nowait postinstall skipifsilent" >> installer.iss
+            - name: Build Windows Installer
+              run: |
+                  iscc installer.iss
+            - name: Upload Installer Artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: windows-installer
+                  path: dist/FullstackEcosystemInstaller.exe

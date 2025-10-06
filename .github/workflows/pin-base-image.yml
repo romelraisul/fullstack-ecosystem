@@ -1,0 +1,47 @@
+name: pin-base-image
+
+on:
+  schedule:
+    - cron: '15 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pin digest
+        run: |
+          python scripts/pin_base_image_digest.py > pin.log 2>&1 || true
+          echo "----- pin.log -----"; cat pin.log
+
+      - name: Detect change
+        id: diff
+        run: |
+          if git diff --quiet docker/platforms/Dockerfile.platform; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore(platform): pin base image digest'
+          title: 'chore: pin base python:3.11-slim-bookworm digest'
+          body: |
+            Automated digest pin update.
+
+            See action log for details.
+          branch: chore/pin-base-image-digest
+          labels: dependencies,security

@@ -1,0 +1,1909 @@
+{
+    "title": "Quantum + Ultra Services Overview",
+    "uid": "quantum-ultra-overview",
+    "version": 8,
+    "refresh": "10s",
+    "time": {
+        "from": "now-15m",
+        "to": "now"
+    },
+    "links": [
+        {
+            "title": "Numbers Now",
+            "url": "/d/numbers-now",
+            "targetBlank": false
+        },
+        {
+            "title": "Prometheus",
+            "url": "http://prometheus:9090",
+            "targetBlank": true
+        },
+        {
+            "title": "QCAE — Quick View",
+            "url": "/d/qcae-overview",
+            "targetBlank": false
+        }
+    ],
+    "panels": [
+        {
+            "title": "Total req/s (12 svcs, 5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate({__name__=~\"qcc_requests_total|qcms_requests_total|qdc_requests_total|tba_requests_total|rpp_requests_total|ocg_requests_total|moc_requests_total|qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Error rps (12 svcs, 5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate({__name__=~\"qcc_requests_total|qcms_requests_total|qdc_requests_total|tba_requests_total|rpp_requests_total|ocg_requests_total|moc_requests_total|qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total\",status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.1
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Success % (12 svcs, 10m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate({__name__=~\"qcc_requests_total|qcms_requests_total|qdc_requests_total|tba_requests_total|rpp_requests_total|ocg_requests_total|moc_requests_total|qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total\",status=~\"4..|5..\"}[10m])) / clamp_min(sum(rate({__name__=~\"qcc_requests_total|qcms_requests_total|qdc_requests_total|tba_requests_total|rpp_requests_total|ocg_requests_total|moc_requests_total|qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total\"}[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Latency p95 overall (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=~\"qcc_request_duration_seconds_bucket|qcms_request_duration_seconds_bucket|qdc_request_duration_seconds_bucket|tba_request_duration_seconds_bucket|rpp_request_duration_seconds_bucket|ocg_request_duration_seconds_bucket|moc_request_duration_seconds_bucket|qcae_request_duration_seconds_bucket|iec_request_duration_seconds_bucket|fea_request_duration_seconds_bucket|esm_request_duration_seconds_bucket|dsp_request_duration_seconds_bucket\"}[5m])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.2
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCC req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcc_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 4,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCC errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcc_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 4,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCC p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(qcc_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 4,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCMS req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcms_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 4,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCMS errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcms_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCMS p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(qcms_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QDC req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qdc_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QDC errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qdc_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QDC p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(qdc_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 12,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "TBA req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(tba_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 12,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "TBA errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(tba_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 12,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "TBA p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(tba_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 12,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "RPP req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(rpp_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 16,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "RPP errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(rpp_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 16,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "RPP p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(rpp_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 16,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "OCG req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(ocg_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 16,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "OCG errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(ocg_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 20,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "OCG p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(ocg_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 20,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "MOC req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(moc_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 20,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "MOC errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(moc_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 20,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "MOC p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(moc_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 24,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 24,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 24,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(qcae_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 24,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "IEC req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(iec_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 28,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "IEC errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(iec_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 28,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "IEC p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(iec_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 28,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "FEA req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(fea_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 28,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "FEA errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(fea_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 32,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "FEA p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(fea_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 32,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "ESM req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(esm_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 32,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "ESM errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(esm_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 32,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "ESM p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(esm_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 36,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "DSP req/s",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(dsp_requests_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 36,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "DSP errors rps",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(dsp_requests_total{status=~\"4..|5..\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 36,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "DSP p95",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(dsp_request_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 36,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCC health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(qcc_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(qcc_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcc_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcc_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "QCMS health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(qcms_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(qcms_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcms_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcms_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 2,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "QDC health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(qdc_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(qdc_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qdc_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qdc_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 4,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "TBA health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(tba_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(tba_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(tba_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(tba_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "RPP health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(rpp_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(rpp_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(rpp_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(rpp_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 8,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "OCG health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(ocg_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(ocg_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(ocg_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(ocg_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 10,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "MOC health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(moc_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(moc_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(moc_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(moc_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "QCAE health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(qcae_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(qcae_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcae_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(qcae_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 14,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "IEC health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(iec_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(iec_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(iec_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(iec_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 16,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "FEA health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(fea_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(fea_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(fea_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(fea_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "ESM health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(esm_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(esm_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(esm_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(esm_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 20,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "DSP health %",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(dsp_requests_total{status=~\\\"4..|5..\\\"}[10m])) / clamp_min(sum(rate(dsp_requests_total[10m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 95
+                            },
+                            {
+                                "color": "green",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    "links": [
+                        {
+                            "title": "Dash: Numbers Now",
+                            "url": "/d/numbers-now",
+                            "targetBlank": false
+                        },
+                        {
+                            "title": "Prom: errors rps (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(dsp_requests_total%7Bstatus%3D~%224..%7C5..%22%7D%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        },
+                        {
+                            "title": "Prom: req/s (5m)",
+                            "url": "http://prometheus:9090/graph?g0.expr=sum(rate(dsp_requests_total%5B5m%5D))&g0.tab=0",
+                            "targetBlank": true
+                        }
+                    ]
+                }
+            },
+            "gridPos": {
+                "x": 22,
+                "y": 40,
+                "w": 2,
+                "h": 2
+            }
+        },
+        {
+            "title": "Last updated",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "time()"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "dateTimeFromNow"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 42,
+                "w": 24,
+                "h": 1
+            }
+        },
+        {
+            "title": "Quick Links",
+            "type": "text",
+            "options": {
+                "mode": "markdown",
+                "content": "### Quantum Services\n- QCC: [UI](/d/numbers-now) | [Health](http://localhost:5053/health) | [Docs](http://localhost:5053/docs)\n- QCMS: [Health](http://localhost:5081/health) | [Docs](http://localhost:5081/docs)\n- QDC: [Health](http://localhost:5065/health) | [Docs](http://localhost:5065/docs)\n\n### Ultra Services\n- TBA (5056): [Health](http://localhost:5056/health) | [Docs](http://localhost:5056/docs)\n- RPP (5083): [Health](http://localhost:5083/health) | [Docs](http://localhost:5083/docs)\n- OCG (5086): [Health](http://localhost:5086/health) | [Docs](http://localhost:5086/docs)\n- MOC (5096): [Health](http://localhost:5096/health) | [Docs](http://localhost:5096/docs)\n\n### New Services\n- QCAE (5106): [Health](http://localhost:5106/health) | [Docs](http://localhost:5106/docs)\n- IEC (5069): [Health](http://localhost:5069/health) | [Docs](http://localhost:5069/docs)\n- FEA (5070): [Health](http://localhost:5070/health) | [Docs](http://localhost:5070/docs)\n- ESM (5076): [Health](http://localhost:5076/health) | [Docs](http://localhost:5076/docs)\n- DSP (5099): [Health](http://localhost:5099/health) | [Docs](http://localhost:5099/docs)"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 43,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Latency p99 overall (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate({__name__=~\"qcc_request_duration_seconds_bucket|qcms_request_duration_seconds_bucket|qdc_request_duration_seconds_bucket|tba_request_duration_seconds_bucket|rpp_request_duration_seconds_bucket|ocg_request_duration_seconds_bucket|moc_request_duration_seconds_bucket|qcae_request_duration_seconds_bucket|iec_request_duration_seconds_bucket|fea_request_duration_seconds_bucket|esm_request_duration_seconds_bucket|dsp_request_duration_seconds_bucket\"}[5m])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.4
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 52,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE quantum jobs/s (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_quantum_jobs_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 52,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE quantum errors rps (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_quantum_jobs_total{status=\"error\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.1
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 52,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE quantum p95 (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(qcae_quantum_job_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.5
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 52,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE quantum shots/s (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_quantum_shots_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 56,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE quantum p99 (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum(rate(qcae_quantum_job_duration_seconds_bucket[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.8
+                            },
+                            {
+                                "color": "red",
+                                "value": 2
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 56,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "QCAE jobs/s by kind",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum by (kind) (rate(qcae_quantum_jobs_total[5m]))",
+                    "legendFormat": "{{kind}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 56,
+                "w": 12,
+                "h": 8
+            }
+        },
+        {
+            "title": "QCAE p95 by kind (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(qcae_quantum_job_duration_seconds_bucket[5m])))",
+                    "legendFormat": "p95 {{kind}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 60,
+                "w": 12,
+                "h": 8
+            }
+        },
+        {
+            "title": "QCAE p99 by kind (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum by (le, kind) (rate(qcae_quantum_job_duration_seconds_bucket[5m])))",
+                    "legendFormat": "p99 {{kind}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 64,
+                "w": 12,
+                "h": 8
+            }
+        },
+        {
+            "title": "Quantum Guardrails — violations rps (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(qcae_guardrail_violations_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.01
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 68,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Top offenders by kind (violations 1h)",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "topk(5, sum by (kind) (increase(qcae_guardrail_violations_total[1h])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 68,
+                "w": 9,
+                "h": 6
+            }
+        },
+        {
+            "title": "Top offenders by type (violations 1h)",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "topk(5, sum by (type) (increase(qcae_guardrail_violations_total[1h])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 15,
+                "y": 68,
+                "w": 9,
+                "h": 6
+            }
+        },
+        {
+            "title": "Last 50 guardrail violations",
+            "type": "table",
+            "targets": [
+                {
+                    "expr": "topk(50, increase(qcae_guardrail_violations_total[1h]))"
+                }
+            ],
+            "options": {
+                "showHeader": true
+            },
+            "transformations": [
+                {
+                    "id": "labelsToFields"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 72,
+                "w": 24,
+                "h": 6
+            }
+        }
+    ]
+}

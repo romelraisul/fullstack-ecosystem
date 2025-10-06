@@ -1,0 +1,92 @@
+name: "Image Scan"
+description: "Build an image from a Dockerfile and run Trivy & Grype producing SARIF outputs"
+author: "Container Security Lite Refactor"
+inputs:
+  dockerfile:
+    description: "Path to Dockerfile"
+    required: true
+  context:
+    description: "Build context directory"
+    required: true
+  image-tag:
+    description: "Local image tag name"
+    required: true
+  trivy-version:
+    description: "Trivy version"
+    required: false
+    default: "0.52.1"
+  grype-version:
+    description: "Grype version"
+    required: false
+    default: "v0.76.3"
+  syft-version:
+    description: "Syft version (optional if SBOM needed)"
+    required: false
+    default: "v1.14.0"
+  generate-sbom:
+    description: "Generate SBOM (cyclonedx+spdx)"
+    required: false
+    default: "false"
+outputs:
+  trivy-sarif:
+    description: "Path to trivy SARIF file"
+    value: ${{ steps.trivy.outputs.path }}
+  grype-sarif:
+    description: "Path to grype SARIF file"
+    value: ${{ steps.grype.outputs.path }}
+  sbom-cdx:
+    description: "CycloneDX SBOM path (if generated)"
+    value: ${{ steps.sbom.outputs.cdx }}
+  sbom-spdx:
+    description: "SPDX SBOM path (if generated)"
+    value: ${{ steps.sbom.outputs.spdx }}
+runs:
+  using: "composite"
+  steps:
+    - name: Prep cache dirs
+      shell: bash
+      run: |
+        mkdir -p ~/.cache/trivy ~/.cache/grype
+    - name: Build image
+      shell: bash
+      run: |
+        set -e
+        docker build -f "${{ inputs.dockerfile }}" -t "${{ inputs.image-tag }}" "${{ inputs.context }}"
+    - name: Install tools
+      shell: bash
+      run: |
+        set -e
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin ${{ inputs.grype-version }}
+        curl -sSfL https://github.com/aquasecurity/trivy/releases/download/v${{ inputs.trivy-version }}/trivy_${{ inputs.trivy-version }}_Linux-64bit.tar.gz -o trivy.tgz
+        tar -xzf trivy.tgz trivy && sudo mv trivy /usr/local/bin/ && rm trivy.tgz
+        if [ "${{ inputs.generate-sbom }}" = "true" ]; then
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin ${{ inputs.syft-version }}
+        fi
+        sudo apt-get update -y && sudo apt-get install -y jq
+    - name: Scan with Trivy
+      id: trivy
+      shell: bash
+      run: |
+        set -e
+        trivy image --security-checks vuln --format sarif --output trivy.sarif "${{ inputs.image-tag }}" || true
+        echo "path=$PWD/trivy.sarif" >> $GITHUB_OUTPUT
+    - name: Scan with Grype
+      id: grype
+      shell: bash
+      run: |
+        # Enable DB cache if present
+        export TRIVY_CACHE_DIR=~/.cache/trivy
+        set -e
+        grype "${{ inputs.image-tag }}" -o sarif > grype.sarif || true
+        echo "path=$PWD/grype.sarif" >> $GITHUB_OUTPUT
+    - name: Generate SBOM (optional)
+      if: inputs.generate-sbom == 'true'
+      id: sbom
+        export GRYPE_DB_CACHE_DIR=~/.cache/grype
+      shell: bash
+      run: |
+        set -e
+        syft packages local:${{ inputs.image-tag }} -o cyclonedx-json > sbom.cdx.json
+        syft packages local:${{ inputs.image-tag }} -o spdx-json > sbom.spdx.json
+        echo "cdx=$PWD/sbom.cdx.json" >> $GITHUB_OUTPUT
+        echo "spdx=$PWD/sbom.spdx.json" >> $GITHUB_OUTPUT

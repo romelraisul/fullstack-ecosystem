@@ -1,0 +1,208 @@
+{
+    "title": "Internal Latency Overview",
+    "uid": "internal-latency-overview",
+    "version": 2,
+    "panels": [
+        {
+            "title": "Latency Class State",
+            "type": "state-timeline",
+            "description": "Classification of last latency sample per service (0=good,1=warn,2=high,3=na)",
+            "targets": [
+                {
+                    "expr": "internal_service_latency_class"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                "0": {
+                                    "text": "good"
+                                },
+                                "1": {
+                                    "text": "warn"
+                                },
+                                "2": {
+                                    "text": "high"
+                                },
+                                "3": {
+                                    "text": "na"
+                                }
+                            }
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1
+                            },
+                            {
+                                "color": "red",
+                                "value": 2
+                            },
+                            {
+                                "color": "gray",
+                                "value": 3
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 24,
+                "h": 6
+            },
+            "options": {
+                "legend": {
+                    "show": false
+                },
+                "rowHeight": 0.9
+            }
+        },
+        {
+            "title": "Internal p99 Latency (10m window)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum by (service, le) (rate(internal_service_latency_seconds_bucket[5m])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.5
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.8
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 6,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Failure Rate (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "internal_service:failure_rate_5m"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.05
+                            },
+                            {
+                                "color": "red",
+                                "value": 0.1
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 14,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Configured Targets (by source)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "internal_service_latency_targets"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "orientation": "horizontal",
+                "textMode": "auto"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 30,
+                "w": 12,
+                "h": 4
+            }
+        },
+        {
+            "title": "Attempts vs OK (rate 5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum by(service)(rate(internal_service_latency_attempts_total[5m]))",
+                    "legendFormat": "attempts {{service}}"
+                },
+                {
+                    "expr": "sum by(service)(rate(internal_service_latency_ok_total[5m]))",
+                    "legendFormat": "ok {{service}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "ops"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 22,
+                "w": 24,
+                "h": 8
+            }
+        }
+    ],
+    "links": [
+        {
+            "title": "API Overview",
+            "url": "/d/api-overview",
+            "targetBlank": false
+        }
+    ]
+}

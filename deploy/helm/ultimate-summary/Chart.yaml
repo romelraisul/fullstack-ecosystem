@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ultimate-summary
+version: 0.1.0
+description: Helm chart for Ultimate Enterprise Summary service
+appVersion: "1.0.0"

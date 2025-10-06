@@ -1,0 +1,131 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "StabilityMetrics",
+    "oneOf": [
+        {
+            "type": "object",
+            "required": [
+                "timestamp",
+                "breaking",
+                "window_total_count",
+                "window_stable_count",
+                "window_stability_ratio",
+                "current_stable_streak",
+                "longest_stable_streak"
+            ],
+            "properties": {
+                "schema_version": {
+                    "type": [
+                        "string",
+                        "number"
+                    ],
+                    "description": "Schema contract version"
+                },
+                "timestamp": {
+                    "type": [
+                        "string",
+                        "number"
+                    ],
+                    "description": "Unix epoch seconds or ISO timestamp"
+                },
+                "breaking": {
+                    "type": "boolean"
+                },
+                "incompatible": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "deleted_or_removed": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                },
+                "window_size": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "window_total_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "window_stable_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "window_stability_ratio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "current_stable_streak": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "longest_stable_streak": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "window_mean_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                },
+                "badge": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "extensions": {
+                    "type": "object",
+                    "description": "Forward-compatible extension fields",
+                    "properties": {
+                        "placeholder_streak": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": false
+        },
+        {
+            "type": "object",
+            "required": [
+                "window_stability_ratio",
+                "placeholder"
+            ],
+            "properties": {
+                "schema_version": {
+                    "type": [
+                        "string",
+                        "number"
+                    ]
+                },
+                "window_stability_ratio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "placeholder": {
+                    "type": "boolean",
+                    "const": true
+                },
+                "extensions": {
+                    "type": "object",
+                    "properties": {
+                        "placeholder_streak": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": false
+        }
+    ]
+}

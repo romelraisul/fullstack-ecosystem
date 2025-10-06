@@ -1,0 +1,946 @@
+name: governance-openapi-export
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - governance_app/**
+      - scripts/export_openapi_schema.py
+  pull_request:
+    paths:
+      - governance_app/**
+      - scripts/export_openapi_schema.py
+  schedule:
+    - cron: "30 2 * * *" # Nightly full export refresh
+  workflow_dispatch:
+    inputs:
+      allow_breaking:
+        description: "Set to 1 to override breaking change failure gate"
+        required: false
+        default: "0"
+      stability_window:
+        description: "Rolling window (days or runs) for stability metrics"
+        required: false
+        default: "30"
+      stability_alert_threshold:
+        description: "Alert threshold for window stability ratio (0-1)"
+        required: false
+        default: "0.8"
+      placeholder_max_runs:
+        description: "Maximum consecutive runs allowed with placeholder metrics before failing"
+        required: false
+        default: "3"
+      placeholder_streak_alert_threshold:
+        description: "Open alert if placeholder streak >= this value (0 disables)"
+        required: false
+        default: "5"
+
+# Restrict token permissions (principle of least privilege)
+permissions:
+  contents: write # needed to push to schemas branch
+  pull-requests: write # needed to comment on PRs
+
+# Prevent overlapping main branch schema publishes
+concurrency:
+  group: governance-openapi-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export & Lint Schema
+    runs-on: ubuntu-latest
+    needs: governance-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    outputs:
+      breaking: ${{ steps.breaking_gate.outputs.breaking }}
+      version: ${{ steps.version.outputs.version }}
+    env:
+      PRIMARY_PUBLISH_PY: "3.12"
+      # Propagate ALLOW_BREAKING from dispatch input (fallback to empty/0)
+      ALLOW_BREAKING: ${{ github.event.inputs.allow_breaking }}
+      # Dynamic stability window & alert threshold (fallback defaults)
+      STABILITY_WINDOW: ${{ github.event.inputs.stability_window || '30' }}
+      STABILITY_ALERT_THRESHOLD: ${{ github.event.inputs.stability_alert_threshold || '0.8' }}
+      PLACEHOLDER_MAX_RUNS: ${{ github.event.inputs.placeholder_max_runs || '3' }}
+      PLACEHOLDER_STREAK_ALERT_THRESHOLD: ${{ github.event.inputs.placeholder_streak_alert_threshold || '5' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('governance_app/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Set up Node (for Spectral cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python & Spectral deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f governance_app/requirements.txt ]; then pip install -r governance_app/requirements.txt; fi
+          pip install fastapi uvicorn
+          npm install -g @stoplight/spectral-cli
+
+      - name: Cache OpenAPI Generator (npm + jars)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.openapi-generator
+            ~/.m2/repository/org/openapitools
+          key: openapi-gen-${{ runner.os }}-v1
+          restore-keys: |
+            openapi-gen-${{ runner.os }}-
+
+      - name: Derive version
+        id: version
+        run: |
+          DATE_TAG=$(date +%Y.%m.%d)
+          SHORT_SHA=${GITHUB_SHA::7}
+          echo "version=${DATE_TAG}+${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Export OpenAPI schema
+        env:
+          GOVERNANCE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python scripts/export_openapi_schema.py --out openapi-governance.json
+
+      - name: Fetch previous schema (if exists)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git fetch origin schemas:refs/remotes/origin/schemas || true
+          mkdir -p previous
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            git show origin/schemas:schemas/openapi-governance.json > previous/old.json || echo '{}' > previous/old.json
+          else
+            echo '{}' > previous/old.json
+          fi
+      - name: Derive schemas branch head (cache key)
+        if: github.ref == 'refs/heads/main'
+        id: schemas_head
+        run: |
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            HEAD_SHA=$(git rev-parse refs/remotes/origin/schemas)
+            echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+            echo "Schemas branch head: $HEAD_SHA"
+          else
+            echo "No schemas branch yet; using 'none' key"
+            echo "head_sha=none" >> $GITHUB_OUTPUT
+          fi
+      - name: Cache schemas branch (restore)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v4
+        with:
+          path: .schemas-cache
+          key: schemas-${{ steps.schemas_head.outputs.head_sha }}
+          restore-keys: |
+            schemas-
+
+      - name: Schema diff
+        if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+        run: |
+          python scripts/diff_openapi_schema.py --old previous/old.json --new openapi-governance.json --json-out diff.json | tee diff-summary.txt
+          echo "## OpenAPI Diff (${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          sed -e 's/^/    /' diff-summary.txt >> $GITHUB_STEP_SUMMARY || true
+          if [ -f diff.json ]; then echo "\n<details><summary>Machine-readable diff</summary>\n" >> $GITHUB_STEP_SUMMARY; cat diff.json >> $GITHUB_STEP_SUMMARY; echo "\n</details>" >> $GITHUB_STEP_SUMMARY; fi
+
+      - name: Cache openapi-diff jar
+        if: github.ref == 'refs/heads/main'
+        id: diffjar
+        uses: actions/cache@v4
+        with:
+          path: openapi-diff.jar
+          key: openapi-diff-2.2.0
+
+      - name: Download openapi-diff jar (if cache miss)
+        if: github.ref == 'refs/heads/main' && steps.diffjar.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL https://repo1.maven.org/maven2/org/openapitools/openapi-diff-core/2.2.0/openapi-diff-core-2.2.0-all.jar -o openapi-diff.jar
+
+      - name: Breaking change detection (openapi-diff)
+        if: github.ref == 'refs/heads/main'
+        env:
+          ALLOW_BREAKING: ${{ env.ALLOW_BREAKING }}
+        run: |
+          set -e
+          if [ ! -f previous/old.json ]; then echo "No previous schema; skipping diff gate"; exit 0; fi
+          echo "Running breaking change analysis..."
+          # Try JSON output (future-proof: if tool adds option). Fallback to text parsing.
+          # openapi-diff currently lacks native JSON; we'll parse text.
+          java -jar openapi-diff.jar --fail-on-incompatible previous/old.json openapi-governance.json > breaking-diff.txt || BREAKING=$?
+          TOTAL=$(wc -l < breaking-diff.txt || echo 0)
+          INCOMPAT=$(grep -Ei '(Incompatible|incompatible|deleted|required changed|response changed)' breaking-diff.txt | wc -l || echo 0)
+          echo "Breaking change summary: $INCOMPAT potential breaking lines out of $TOTAL total analysis lines" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$BREAKING" ]; then
+            echo "breaking=true" >> $GITHUB_OUTPUT
+            echo "Breaking changes detected." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 breaking-diff.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            if [ "${ALLOW_BREAKING}" = "1" ]; then
+              echo "ALLOW_BREAKING=1 set; continuing despite incompatibilities" >&2
+              exit 0
+            else
+              echo "Failing due to incompatible API changes." >&2
+              exit 1
+            fi
+          else
+            echo "breaking=false" >> $GITHUB_OUTPUT
+            echo "No breaking changes detected." >> $GITHUB_STEP_SUMMARY
+          fi
+        id: breaking_gate
+
+      - name: Parse breaking report to JSON
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+        run: |
+          python scripts/parse_openapi_breaking_report.py \
+            --input breaking-diff.txt \
+            --output breaking-diff.json \
+            --config scripts/breaking_patterns.json \
+            --badge-json breaking-badge.json \
+            --status-json breaking-status.json || echo '{}' > breaking-diff.json
+
+      - name: Generate stability badge (breaking)
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          # Compute stability score: 100 - (incompatible*10 + deleted_or_removed*5), floor 0
+          INC=$(jq '.summary.incompatible // 0' breaking-diff.json || echo 0)
+          DEL=$(jq '.summary.deleted_or_removed // 0' breaking-diff.json || echo 0)
+          SCORE=$((100 - INC*10 - DEL*5))
+          if [ $SCORE -lt 0 ]; then SCORE=0; fi
+          COLOR=red
+          if [ $SCORE -ge 90 ]; then COLOR=brightgreen; elif [ $SCORE -ge 75 ]; then COLOR=green; elif [ $SCORE -ge 50 ]; then COLOR=yellow; elif [ $SCORE -ge 25 ]; then COLOR=orange; fi
+          printf '%s' '{"schemaVersion":1,"label":"stability score","message":"score:'"${SCORE}"'","color":"'"${COLOR}"'"}' > stability-badge.json
+
+      - name: Generate stable placeholder status
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking != 'true' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          # Provide a basic status file for stable runs so metrics script can process
+          printf '%s' '{"breaking": false, "incompatible": 0, "deleted_or_removed": 0}' > breaking-status.json
+
+      - name: Generate stability metrics & rolling badge
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          pip install --quiet jq >/dev/null 2>&1 || true
+          python scripts/generate_stability_metrics.py \
+            --history status/history.jsonl \
+            --current-status breaking-status.json \
+            --output-metrics stability-metrics.json \
+            --badge-json stability-badge.json \
+            --window $STABILITY_WINDOW
+
+      - name: Safeguard missing stability metrics
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          if [ ! -f stability-metrics.json ]; then
+            echo 'stability-metrics.json missing; writing placeholder'
+            printf '%s' '{"schema_version":1,"window_stability_ratio":1.0,"placeholder":true}' > stability-metrics.json
+          fi
+          python scripts/placeholder_streak_guard.py --metrics stability-metrics.json --streak-file .placeholder-streak --max $PLACEHOLDER_MAX_RUNS
+          if [ $? -ne 0 ]; then
+            echo "Placeholder streak guard failed" >&2
+            exit 1
+          fi
+                  # Inject streak into metrics + generate streak badge
+                  python scripts/inject_streak_and_badge.py --metrics stability-metrics.json --streak-file .placeholder-streak --badge-out placeholder-streak-badge.json || { echo 'streak injection failed' >&2; exit 1; }
+
+      - name: Placeholder streak degradation alert
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        uses: actions/github-script@v7
+        env:
+          PLACEHOLDER_STREAK_ALERT_THRESHOLD: ${{ env.PLACEHOLDER_STREAK_ALERT_THRESHOLD }}
+        with:
+          script: |
+            const fs = require('fs');
+            const thresholdRaw = process.env.PLACEHOLDER_STREAK_ALERT_THRESHOLD || '0';
+            const threshold = parseInt(thresholdRaw, 10);
+            if (!threshold || threshold <= 0) { core.info('Placeholder streak alert threshold disabled or <=0'); return; }
+            if (!fs.existsSync('stability-metrics.json')) { core.info('No stability-metrics.json present'); return; }
+            let metrics = {};
+            try { metrics = JSON.parse(fs.readFileSync('stability-metrics.json','utf8')); } catch(e) { core.warning('Failed to parse stability-metrics.json'); return; }
+            const ext = metrics.extensions || {};
+            const streak = parseInt(ext.placeholder_streak || '0');
+            const isPlaceholder = !!metrics.placeholder;
+            if (streak < threshold) { core.info(`Placeholder streak ${streak} < threshold ${threshold}`); return; }
+            if (!isPlaceholder) { core.info('Metrics not in placeholder mode; no alert'); return; }
+            const title = `Placeholder metrics streak alert (streak ${streak})`;
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            const exists = issues.find(i => i.title.startsWith('Placeholder metrics streak alert'));
+            if (exists) { core.info('Placeholder streak alert already open'); return; }
+            let body = `Placeholder metrics have persisted for ${streak} consecutive runs (>= threshold ${threshold}).\n`;
+            body += '\nDocumentation: See the Placeholder Streak Governance section in the README for remediation guidance: https://github.com/${context.repo.owner}/${context.repo.repo}#placeholder-streak-governance\n';
+            body += '\nRecommended actions:\n';
+            body += '- Investigate why stability metrics generation is producing placeholders (pipeline failure, script error, missing inputs).\n';
+            body += '- Check recent workflow logs for earlier failure prior to metrics generation.\n';
+            body += '- Confirm schemas branch accessibility and write permissions.\n';
+            body += '\nCurrent metrics JSON (truncated if large):```json\n' + JSON.stringify(metrics, null, 2).slice(0,4000) + '\n```';
+            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['api-stability','automated','placeholder-streak'] });
+
+      - name: Auto-close placeholder streak alert (recovered)
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('stability-metrics.json')) { return; }
+            let metrics = {};
+            try { metrics = JSON.parse(fs.readFileSync('stability-metrics.json','utf8')); } catch(e) { return; }
+            if (metrics.placeholder) { return; } // still placeholder -> nothing to close
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            const open = issues.filter(i => i.title.startsWith('Placeholder metrics streak alert'));
+            for (const issue of open) {
+              const labels = (issue.labels || []).map(l => typeof l === 'string' ? l : l.name);
+              if (labels.some(l => ['governance-hold','do-not-close','no-auto-close'].includes(l))) {
+                core.info(`Skipping auto-close for issue #${issue.number} due to suppression label`);
+                continue;
+              }
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, body: 'Metrics recovered (non-placeholder). Auto-closing alert.' });
+              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, state: 'closed' });
+            }
+
+      - name: JSON sanity validation
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          for f in stability-metrics.json breaking-status.json breaking-badge.json stability-badge.json; do
+            if [ -f "$f" ]; then
+              echo "Validating $f"; jq type "$f" >/dev/null || { echo "Invalid JSON in $f" >&2; exit 1; };
+            fi
+          done
+
+      - name: Stability degradation alert
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        uses: actions/github-script@v7
+        env:
+          STABILITY_ALERT_THRESHOLD: ${{ env.STABILITY_ALERT_THRESHOLD }}
+        with:
+          script: |
+            const fs = require('fs');
+            const threshold = parseFloat(process.env.STABILITY_ALERT_THRESHOLD || '0.8');
+            if (!fs.existsSync('stability-metrics.json')) { core.info('No stability-metrics.json present'); return; }
+            let metrics = {};
+            try { metrics = JSON.parse(fs.readFileSync('stability-metrics.json','utf8')); } catch(e) { core.warning('Failed to parse stability-metrics.json'); return; }
+            const ratio = metrics.window_stability_ratio;
+            if (ratio === undefined) { core.info('No window_stability_ratio in metrics'); return; }
+            if (ratio >= threshold) { core.info(`Stability ratio ${ratio} >= threshold ${threshold}; no alert.`); return; }
+            const title = `API stability degradation alert (ratio ${ratio.toFixed(2)})`;
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            const exists = issues.find(i => i.title.startsWith('API stability degradation alert'));
+            if (exists) { core.info('Degradation alert already open'); return; }
+            let body = `Stability window ratio (${ratio.toFixed(3)}) is below threshold ${threshold}.\n`;
+            body += '\nDocumentation: See the API Stability Metrics section in the README for context & remediation: https://github.com/${context.repo.owner}/${context.repo.repo}#api-stability-metrics\n';
+            body += '\nThreshold details:\n';
+            body += `- Window size: ${metrics.window_size}\n`;
+            body += `- Stable count (window): ${metrics.window_stable_count}\n`;
+            body += `- Total count (window): ${metrics.window_total_count}\n`;
+            body += `- Current stable streak: ${metrics.current_stable_streak}\n`;
+            body += `- Longest stable streak: ${metrics.longest_stable_streak}\n`;
+            body += '\nFull metrics JSON:```json\n' + JSON.stringify(metrics, null, 2) + '\n```';
+            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['api-stability','automated','alert'] });
+
+      - name: Semantic version policy validation
+        if: matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          # Determine previous schema version (if any) from schemas branch
+          PREV_FILE=prev-openapi.json
+          git fetch --depth=1 origin schemas:refs/remotes/origin/schemas || true
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            git show origin/schemas:schemas/openapi-governance.json > $PREV_FILE 2>/dev/null || true
+          fi
+          CURRENT_FILE=openapi-governance.json
+          BREAKING_FLAG=breaking-flag.txt
+          if [ -f breaking-status.json ]; then
+            jq -r '.breaking_changes | length | select(.>0)' breaking-status.json >/dev/null 2>&1 && echo true > $BREAKING_FLAG || echo false > $BREAKING_FLAG
+          else
+            echo false > $BREAKING_FLAG
+          fi
+          python scripts/validate_semver_against_breaking.py --current $CURRENT_FILE --previous $PREV_FILE --breaking-flag $BREAKING_FLAG --out semver-validation.json || SEMVER_STATUS=$?
+          cat semver-validation.json || true
+          # Fail pipeline if status=fail
+          if jq -e '.status=="fail"' semver-validation.json >/dev/null 2>&1; then
+            echo 'Semantic version policy failed.' >&2
+            exit 1
+          fi
+          # Continue on warn/ok
+
+      - name: Fetch previous schema for PR (ops classification)
+        if: github.event_name == 'pull_request' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          # If previous not already fetched (main path uses previous/old.json), fetch schemas branch for PR context
+          if [ ! -d previous ]; then mkdir -p previous; fi
+          if [ ! -f previous/old.json ]; then
+            git fetch --depth=1 origin schemas:refs/remotes/origin/schemas || true
+            if git show-ref --quiet refs/remotes/origin/schemas; then
+              git show origin/schemas:schemas/openapi-governance.json > previous/old.json 2>/dev/null || echo '{}' > previous/old.json
+            else
+              echo '{}' > previous/old.json
+            fi
+          fi
+
+      - name: Classify per-operation changes
+        if: (github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          OLD_FILE=previous/old.json
+          if [ ! -f "$OLD_FILE" ] || [ ! -s "$OLD_FILE" ]; then OLD_FILE=""; fi
+          if [ -n "$OLD_FILE" ]; then
+            python scripts/classify_operation_changes.py --old "$OLD_FILE" --new openapi-governance.json --out operations-classification.json || echo "Classification failed"
+          else
+            python scripts/classify_operation_changes.py --new openapi-governance.json --out operations-classification.json || echo "Classification failed"
+          fi
+
+      - name: Governance webhook notifications
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        env:
+          GOVERNANCE_WEBHOOK: ${{ secrets.GOVERNANCE_WEBHOOK }}
+          STABILITY_ALERT_THRESHOLD: ${{ env.STABILITY_ALERT_THRESHOLD }}
+          PLACEHOLDER_STREAK_ALERT_THRESHOLD: ${{ env.PLACEHOLDER_STREAK_ALERT_THRESHOLD }}
+        run: |
+          if [ -z "${GOVERNANCE_WEBHOOK}" ]; then echo "No GOVERNANCE_WEBHOOK secret; skipping governance webhook"; exit 0; fi
+          semver_status="unknown"
+          stability_ratio=""
+          # Attempt to fetch previous governance summary for recovery detection
+          git fetch --depth=1 origin schemas:refs/remotes/origin/schemas || true
+          prev_summary_file=.prev_governance_summary.json
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            git show origin/schemas:status/governance-summary.json > $prev_summary_file 2>/dev/null || echo '{}' > $prev_summary_file
+          else
+            echo '{}' > $prev_summary_file
+          fi
+          prev_semver_status=$(jq -r '.semver_policy_status // empty' $prev_summary_file 2>/dev/null || echo '')
+          prev_stability_ratio=$(jq -r '.stability_ratio // empty' $prev_summary_file 2>/dev/null || echo '')
+          prev_placeholder=$(jq -r '.placeholder // false' $prev_summary_file 2>/dev/null || echo false)
+          if [ -f semver-validation.json ]; then semver_status=$(jq -r '.status' semver-validation.json 2>/dev/null || echo unknown); fi
+          if [ -f stability-metrics.json ]; then stability_ratio=$(jq -r '.window_stability_ratio // empty' stability-metrics.json 2>/dev/null || echo ""); fi
+          alert_threshold="${STABILITY_ALERT_THRESHOLD:-0.8}"
+          send=0
+          reason_list=()
+          if [ "$semver_status" = "fail" ]; then send=1; reason_list+=("semver_fail"); fi
+          if [ -n "$stability_ratio" ]; then
+            awk_check=$(awk -v r="$stability_ratio" -v t="$alert_threshold" 'BEGIN{ if (r<t) print 1; else print 0;}')
+            if [ "$awk_check" -eq 1 ]; then send=1; reason_list+=("stability_drop"); fi
+          fi
+          # Placeholder streak trigger
+          if [ -f stability-metrics.json ]; then
+            streak=$(jq -r '.extensions.placeholder_streak // 0' stability-metrics.json 2>/dev/null || echo 0)
+            ph=$(jq -r '.placeholder // false' stability-metrics.json 2>/dev/null || echo false)
+            ph_thresh=${PLACEHOLDER_STREAK_ALERT_THRESHOLD:-0}
+            if [ "$ph" = "true" ] && [ "$ph_thresh" -gt 0 ] && [ "$streak" -ge "$ph_thresh" ]; then
+              send=1; reason_list+=("placeholder_streak");
+            fi
+          fi
+          # Recovery detection (only if we have previous summary)
+          if [ -s "$prev_summary_file" ]; then
+            # semver recovery: previously fail now ok or warn
+            if [ "$prev_semver_status" = "fail" ] && [ "$semver_status" != "fail" ] && [ "$semver_status" != "unknown" ]; then
+              send=1; reason_list+=("semver_recovered");
+            fi
+            # stability recovery: previously below threshold now >= threshold
+            if [ -n "$prev_stability_ratio" ] && [ -n "$stability_ratio" ]; then
+              prev_low=$(awk -v r="$prev_stability_ratio" -v t="$alert_threshold" 'BEGIN{ if (r<t) print 1; else print 0;}')
+              now_ok=$(awk -v r="$stability_ratio" -v t="$alert_threshold" 'BEGIN{ if (r>=t) print 1; else print 0;}')
+              if [ "$prev_low" -eq 1 ] && [ "$now_ok" -eq 1 ]; then
+                send=1; reason_list+=("stability_recovered");
+              fi
+            fi
+            # placeholder recovery: previously placeholder true, now false
+            if [ "$prev_placeholder" = "true" ] && [ -f stability-metrics.json ]; then
+              cur_placeholder=$(jq -r '.placeholder // false' stability-metrics.json 2>/dev/null || echo false)
+              if [ "$cur_placeholder" = "false" ]; then
+                send=1; reason_list+=("placeholder_recovered");
+              fi
+            fi
+          fi
+          if [ $send -ne 1 ]; then echo "No webhook trigger conditions met"; exit 0; fi
+          reasons=$(printf '%s' "${reason_list[*]}" | sed 's/ /,/g')
+          sha_short=${GITHUB_SHA::7}
+            added=0
+            removed=0
+            if [ -f operations-classification.json ]; then
+              added=$(jq '.counts.added' operations-classification.json 2>/dev/null || echo 0)
+              removed=$(jq '.counts.removed' operations-classification.json 2>/dev/null || echo 0)
+            fi
+          payload=$(jq -n --arg semver "$semver_status" --argjson ratio ${stability_ratio:-0} --arg reasons "$reasons" --arg sha "$sha_short" --arg added "$added" --arg removed "$removed" '{event:"governance_notice", version:1, sha:$sha, semver_status:$semver, stability_ratio:$ratio, reasons:($reasons|split(",")), operations:{added:($added|tonumber), removed:($removed|tonumber)}}')
+          curl -s -X POST -H 'Content-Type: application/json' -d "$payload" "$GOVERNANCE_WEBHOOK" || echo "Webhook post failed" >&2
+
+      - name: Commit stability artifacts
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          SCHEMA_BRANCH="schemas"
+          git fetch origin $SCHEMA_BRANCH || true
+          if git ls-remote --exit-code origin $SCHEMA_BRANCH >/dev/null 2>&1; then
+            git checkout $SCHEMA_BRANCH
+          else
+            git checkout --orphan $SCHEMA_BRANCH
+          fi
+          mkdir -p status
+          # Preserve existing history if any (metrics script already appended, ensure file exists)
+          if [ -f ../status/history.jsonl ]; then
+            cat ../status/history.jsonl >> status/history.jsonl || true
+          fi
+          # Move generated artifacts into status directory
+          cp ../breaking-status.json status/breaking-status.json || true
+          cp ../breaking-badge.json status/breaking-badge.json || true
+          cp ../stability-badge.json status/stability-badge.json || true
+          cp ../stability-metrics.json status/stability-metrics.json || true
+          cp ../placeholder-streak-badge.json status/placeholder-streak-badge.json || true
+          cp ../semver-validation.json status/semver-validation.json || true
+          cp ../.placeholder-streak status/placeholder-streak.txt 2>/dev/null || true
+          # Render composite governance status HTML (index.html) if script present
+          if [ -f ../scripts/render_governance_status.py ]; then
+            cp ../stability-metrics.json . 2>/dev/null || true
+            cp ../breaking-status.json . 2>/dev/null || true
+            cp ../placeholder-streak-badge.json . 2>/dev/null || true
+            cp ../stability-badge.json . 2>/dev/null || true
+            cp ../breaking-badge.json . 2>/dev/null || true
+            python ../scripts/render_governance_status.py --out status/index.html || echo "Failed to render governance status page" >&2
+          fi
+          # Create minimal governance-summary.json for lightweight consumers
+          if [ -f ../stability-metrics.json ]; then
+            ratio=$(jq -r '.window_stability_ratio // .overall_stability_ratio // empty' ../stability-metrics.json)
+            streak=$(jq -r '.extensions.placeholder_streak // 0' ../stability-metrics.json)
+            placeholder=$(jq -r '.placeholder // false' ../stability-metrics.json)
+            breaking_count=null
+            if [ -f ../breaking-status.json ]; then
+              breaking_count=$(jq -r '.breaking_changes | length' ../breaking-status.json 2>/dev/null || echo null)
+            fi
+            semver_status=null
+            if [ -f ../semver-validation.json ]; then
+              semver_status=$(jq -r '.status' ../semver-validation.json 2>/dev/null || echo null)
+            fi
+            webhook_payload_version=1
+            printf '{"stability_ratio":%s,"placeholder_streak":%s,"placeholder":%s,"breaking_changes_count":%s,"semver_policy_status":%s,"webhook_payload_version":%s}\n' "${ratio:-null}" "${streak:-0}" "${placeholder}" "${breaking_count}" "\"${semver_status}\"" "$webhook_payload_version" > status/governance-summary.json || true
+            # If operations classification exists, augment summary with operation counts
+            if [ -f ../operations-classification.json ]; then
+              ops_added=$(jq '.counts.added' ../operations-classification.json 2>/dev/null || echo 0)
+              ops_removed=$(jq '.counts.removed' ../operations-classification.json 2>/dev/null || echo 0)
+              tmp=$(mktemp)
+              jq --argjson a "$ops_added" --argjson r "$ops_removed" '.operations_added=$a | .operations_removed=$r' status/governance-summary.json > $tmp && mv $tmp status/governance-summary.json || true
+            fi
+            # Derive badge (simple thresholds)
+            if [ -n "${ratio}" ]; then
+              color="brightgreen"
+              awk_ratio=$(awk -v r="$ratio" 'BEGIN{ if (r >= 0.95) print 1; else print 0;}')
+              if [ "$awk_ratio" -ne 1 ]; then
+                awk_ratio_yellow=$(awk -v r="$ratio" 'BEGIN{ if (r >= 0.85) print 1; else print 0;}')
+                awk_ratio_orange=$(awk -v r="$ratio" 'BEGIN{ if (r >= 0.70) print 1; else print 0;}')
+                if [ "$awk_ratio_yellow" -eq 1 ]; then color="yellow"; elif [ "$awk_ratio_orange" -eq 1 ]; then color="orange"; else color="red"; fi
+              fi
+              if [ "$placeholder" = "true" ]; then color="lightgrey"; fi
+              # message as percentage with one decimal
+              pct=$(awk -v r="$ratio" 'BEGIN{ printf "%.1f%%", (r*100) }')
+              echo '{"schemaVersion":1,"label":"governance","message":"'"$pct"'","color":"'"$color"'"}' > status/governance-summary-badge.json
+              # Combined badge: ratio + semver policy (ok/warn/fail)
+              semver_display="n/a"
+              if [ "$semver_status" != "null" ]; then semver_display="$semver_status"; fi
+              combo_color="$color"
+              if [ "$semver_status" = "fail" ]; then combo_color="red"; elif [ "$semver_status" = "warn" ] && [ "$combo_color" = "brightgreen" ]; then combo_color="yellow"; fi
+              echo '{"schemaVersion":1,"label":"gov+semver","message":"'"$pct/$semver_display"'","color":"'"$combo_color"'"}' > status/governance-combined-badge.json
+              # Payload version badge
+              echo '{"schemaVersion":1,"label":"gov-webhook","message":"v'"$webhook_payload_version"'","color":"blue"}' > status/payload-version-badge.json
+            fi
+          fi
+          # Roadmap interest capture page (static lightweight placeholder)
+          if [ ! -f status/roadmap-interest.html ]; then
+            echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>Roadmap Interest</title><meta name="viewport" content="width=device-width,initial-scale=1"/><style>body{font-family:system-ui,Arial,sans-serif;margin:2rem;max-width:760px}h1{font-size:1.6rem}form{margin-top:1rem;padding:1rem;border:1px solid #e1e4e8;border-radius:6px;background:#f9f9fb}label{display:block;margin:.5rem 0 .25rem;font-weight:600}input,textarea{width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;font-size:.95rem}button{margin-top:1rem;background:#0366d6;color:#fff;border:none;padding:.6rem 1.1rem;border-radius:4px;cursor:pointer}button:hover{background:#0255b3}.note{font-size:.8rem;color:#555;margin-top:.75rem}.success{padding:.75rem 1rem;background:#e6ffed;border:1px solid #34d058;border-radius:4px;margin-top:1rem;font-size:.9rem}.error{padding:.75rem 1rem;background:#ffeef0;border:1px solid #d73a49;border-radius:4px;margin-top:1rem;font-size:.9rem;color:#86181d}</style></head><body><h1>Roadmap & Early Access Interest</h1><p>Provide an email and (optionally) short context so we can prioritize features aligned with real adoption demand.</p><form id="interestForm"><label for="email">Email</label><input id="email" name="email" required type="email" placeholder="you@example.com"/><label for="use">Primary intended use-case (optional)</label><textarea id="use" name="use" rows="3" placeholder="e.g. Embed governance badge in partner portal; nightly contract diff monitoring"></textarea><label for="needs">Top 1–2 features you need (optional)</label><textarea id="needs" name="needs" rows="3" placeholder="e.g. Webhook on breaking change; per-operation stability feed"></textarea><button type="submit">Submit</button><div class="note">Submission attempts a live POST to <code>/api/roadmap-interest</code>. If it fails, data is still printed to console for manual capture.</div><div id="status" class="success" style="display:none"></div><div id="error" class="error" style="display:none"></div></form><script>const f=document.getElementById("interestForm"),stat=document.getElementById("status"),err=document.getElementById("error");f.addEventListener("submit",async e=>{e.preventDefault();stat.style.display="none";err.style.display="none";const payload={email:email.value.trim(),use:use.value.trim(),needs:needs.value.trim(),ts:new Date().toISOString()};if(!payload.email){err.style.display="block";err.textContent="Email required.";return;}console.log("ROADMAP_INTEREST_SUBMIT",payload);try{const res=await fetch('/api/roadmap-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!res.ok)throw new Error('HTTP '+res.status);stat.style.display="block";stat.textContent="Thanks! Interest recorded.";f.reset();}catch(ex){console.warn('POST failed, falling back to console only',ex);err.style.display="block";err.textContent="Network submission failed (captured locally).";}});</script><p class="note">Source: <code>status/roadmap-interest.html</code>. Enhancements: server POST integration, graceful fallback, basic error UX.</p></body></html>' > status/roadmap-interest.html
+          fi
+          # Generate checksum bundle before adding JSON so it can reference files
+          if [ -f ../scripts/generate_checksums.py ]; then
+            python ../scripts/generate_checksums.py --base . --out status/checksums.json --badge-out status/checksums-badge.json || echo "Checksum generation failed"
+          fi
+          # Optionally sign checksum bundle if signing script & secret present
+          if [ -f ../scripts/sign_checksums.py ] && [ -n "${GOV_SIGNING_PRIVATE_KEY}" ]; then
+            pip install --quiet pynacl >/dev/null 2>&1 || true
+            python ../scripts/sign_checksums.py --checksums status/checksums.json --out status/checksums-signature.json --public-out status/checksums-pubkey.txt || echo "Signing failed"
+          fi
+          # Generate milestone summary & badge if config present
+          if [ -f ../project_milestones.json ] && [ -f ../scripts/generate_milestone_badge.py ]; then
+            python ../scripts/generate_milestone_badge.py --milestones ../project_milestones.json --summary-out status/milestone-summary.json --badge-out status/milestones-badge.json || echo "Milestone badge generation failed"
+          fi
+          git add status/*.json status/*.jsonl || true
+          git add status/index.html 2>/dev/null || true
+          git add status/roadmap-interest.html 2>/dev/null || true
+          # Include operations classification artifact if present
+          if [ -f ../operations-classification.json ]; then cp ../operations-classification.json status/operations-classification.json || true; git add status/operations-classification.json || true; fi
+          if git diff --cached --quiet; then
+            echo "No new stability artifacts to commit"
+          else
+            git commit -m "chore(status): update stability metrics & badges"
+            git push origin $SCHEMA_BRANCH
+          fi
+          # Update cache marker
+          mkdir -p .schemas-cache
+          git rev-parse HEAD > .schemas-cache/last_commit || echo "unknown" > .schemas-cache/last_commit
+          echo "Updated schemas cache marker to $(cat .schemas-cache/last_commit)"
+
+      - name: Publish status & badge (main branch only)
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        run: |
+          mkdir -p governance_status
+          cp breaking-badge.json governance_status/breaking-badge.json || true
+          cp breaking-status.json governance_status/breaking-status.json || true
+          cp breaking-diff.json governance_status/breaking-diff.json || true
+          cp stability-badge.json governance_status/stability-badge.json || true
+          ls -l governance_status
+          # Commit lightweight status to schemas branch (co-locate with schema)
+          SCHEMA_BRANCH="schemas"
+          git fetch origin $SCHEMA_BRANCH || true
+          if git ls-remote --exit-code origin $SCHEMA_BRANCH >/dev/null 2>&1; then
+            git checkout $SCHEMA_BRANCH
+          else
+            git checkout --orphan $SCHEMA_BRANCH
+          fi
+          mkdir -p status
+          cp governance_status/* status/
+          git add status/*.json || true
+          if git diff --cached --quiet; then
+            echo "No status changes to commit"
+          else
+            git commit -m "chore(status): update breaking status artifacts"
+            git push origin $SCHEMA_BRANCH
+          fi
+
+      - name: Auto-file breaking issue
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let payload = {};
+            if (fs.existsSync('breaking-status.json')) {
+              payload = JSON.parse(fs.readFileSync('breaking-status.json','utf8'));
+            }
+            const title = `Breaking API changes detected (${process.env.GITHUB_SHA.substring(0,7)})`;
+            const bodyLines = [];
+            bodyLines.push('Automated detection of breaking API changes.');
+            bodyLines.push('');
+            bodyLines.push('Summary JSON:');
+            bodyLines.push('```json');
+            bodyLines.push(JSON.stringify(payload, null, 2));
+            bodyLines.push('```');
+            if (fs.existsSync('breaking-diff.txt')) {
+              bodyLines.push('\nExcerpt of raw diff (last 80 lines):');
+              const raw = fs.readFileSync('breaking-diff.txt','utf8').trim().split(/\r?\n/).slice(-80).join('\n');
+              bodyLines.push('```');
+              bodyLines.push(raw);
+              bodyLines.push('```');
+            }
+            const body = bodyLines.join('\n');
+            // Avoid duplicate open issues with same title
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            const exists = issues.find(i => i.title === title);
+            if (exists) {
+              core.info('Issue already exists; skipping.');
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['api-breaking','automated'] });
+            }
+
+      - name: Comment diff on PR (fetch baseline)
+        if: github.event_name == 'pull_request' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        # Fetch baseline stability metrics first
+        run: |
+          git fetch --depth=1 origin schemas:refs/remotes/origin/schemas || true
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            git show origin/schemas:status/stability-metrics.json > baseline-stability-metrics.json || echo '{}' > baseline-stability-metrics.json
+          else
+            echo '{}' > baseline-stability-metrics.json
+          fi
+        shell: bash
+
+      - name: PR Comment (diff + stability + ops delta)
+        if: github.event_name == 'pull_request' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = 'OpenAPI diff summary for **${{ steps.version.outputs.version }}** (Python ${{ matrix.python-version }})\n';
+            if (fs.existsSync('diff-summary.txt')) {
+              body += '\n```\n' + fs.readFileSync('diff-summary.txt','utf8') + '\n```\n';
+            } else { body += '\n(No diff summary generated)\n'; }
+            if (fs.existsSync('diff.json')) {
+              const json = JSON.parse(fs.readFileSync('diff.json','utf8'));
+              body += '\nAdded paths: ' + json.paths.added.length + ', Removed paths: ' + json.paths.removed.length + '\n';
+            }
+            // Append per-operation change classification if available
+            if (fs.existsSync('operations-classification.json')) {
+              try {
+                const ops = JSON.parse(fs.readFileSync('operations-classification.json','utf8'));
+                if (ops && ops.counts) {
+                  body += '\n### Operation Delta\n';
+                  body += `Added operations: ${ops.counts.added}, Removed operations: ${ops.counts.removed}\n`;
+                  const sampleAdds = (ops.operations_added || []).slice(0,5).map(o=>`${o.method} ${o.path}`);
+                  const sampleRem = (ops.operations_removed || []).slice(0,5).map(o=>`${o.method} ${o.path}`);
+                  if (sampleAdds.length) body += 'Sample added: ' + sampleAdds.join(', ') + '\n';
+                  if (sampleRem.length) body += 'Sample removed: ' + sampleRem.join(', ') + '\n';
+                }
+              } catch(e) { /* ignore */ }
+            }
+            // Append stability metrics baseline if present
+            if (fs.existsSync('baseline-stability-metrics.json')) {
+              try {
+                const metrics = JSON.parse(fs.readFileSync('baseline-stability-metrics.json','utf8'));
+                if (metrics && Object.keys(metrics).length) {
+                  body += '\n### Stability Window Summary\n';
+                  if (metrics.window_stability_ratio !== undefined) {
+                    body += `Window Stability Ratio: ${(metrics.window_stability_ratio*100).toFixed(1)}% (window size: ${metrics.window_size})\n`;
+                  }
+                  if (metrics.current_stable_streak !== undefined) {
+                    body += `Current Stable Streak: ${metrics.current_stable_streak}\n`;
+                  }
+                  if (metrics.longest_stable_streak !== undefined) {
+                    body += `Longest Stable Streak: ${metrics.longest_stable_streak}\n`;
+                  }
+                  if (metrics.window_mean_score !== undefined) {
+                    body += `Window Mean Score: ${metrics.window_mean_score.toFixed(2)}\n`;
+                  }
+                }
+              } catch(e) { /* ignore parse errors */ }
+            }
+            github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Lint OpenAPI (Spectral)
+        run: spectral lint openapi-governance.json
+
+      - name: Commit schema to schemas branch
+        if: github.ref == 'refs/heads/main' && matrix.python-version == env.PRIMARY_PUBLISH_PY
+        env:
+          GIT_AUTHOR_NAME: github-actions
+          GIT_AUTHOR_EMAIL: github-actions@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions
+          GIT_COMMITTER_EMAIL: github-actions@users.noreply.github.com
+        run: |
+          SCHEMA_BRANCH="schemas"
+          git fetch origin $SCHEMA_BRANCH || true
+          if git ls-remote --exit-code origin $SCHEMA_BRANCH >/dev/null 2>&1; then
+            git checkout $SCHEMA_BRANCH
+          else
+            git checkout --orphan $SCHEMA_BRANCH
+          fi
+          mkdir -p schemas
+          cp openapi-governance.json schemas/openapi-governance.json
+          git add schemas/openapi-governance.json
+          if git diff --cached --quiet; then
+            echo "No schema changes to commit"
+          else
+            git commit -m "chore(schema): update openapi-governance.json"
+            git push origin $SCHEMA_BRANCH
+          fi
+
+      - name: Upload schema artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-governance-${{ matrix.python-version }}
+          path: |
+            openapi-governance.json
+            diff.json
+          if-no-files-found: error
+
+      - name: Upload breaking diff artifacts
+        if: github.ref == 'refs/heads/main' && steps.breaking_gate.outputs.breaking == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: breaking-diff
+          path: |
+            breaking-diff.txt
+            breaking-diff.json
+            breaking-badge.json
+            breaking-status.json
+            stability-badge.json
+            stability-metrics.json
+          if-no-files-found: error
+
+  consistency:
+    name: Schema Consistency Check
+    if: github.ref == 'refs/heads/main'
+    needs: export
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fetch schemas branch
+        run: |
+          git fetch origin schemas:refs/remotes/origin/schemas || true
+          if ! git show-ref --quiet refs/remotes/origin/schemas; then
+            echo "Schemas branch missing (first publish)"; exit 0; fi
+          git show origin/schemas:schemas/openapi-governance.json > schemas-branch.json
+      - name: Download primary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-governance-3.12
+      - name: Compare schema vs branch
+        run: |
+          if ! diff -q openapi-governance.json schemas-branch.json; then
+            echo "Mismatch between generated schema and schemas branch copy" >&2
+            exit 1
+          fi
+
+  sdk-gen:
+    name: Generate SDK Artifacts
+    if: github.ref == 'refs/heads/main' && needs.export.outputs.breaking != 'true'
+    needs: export
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download primary schema artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-governance-3.12
+      - name: Set up Java (for OpenAPI Generator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install OpenAPI Generator CLI
+        run: npm install @openapitools/openapi-generator-cli -g
+      - name: Cache OpenAPI Generator (npm + jars)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.openapi-generator
+            ~/.m2/repository/org/openapitools
+          key: openapi-gen-${{ runner.os }}-v1
+          restore-keys: |
+            openapi-gen-${{ runner.os }}-
+      - name: Generate Python SDK
+        run: |
+          openapi-generator-cli generate -i openapi-governance.json -g python -o clients/python --additional-properties=packageName=governance_client
+      - name: Generate TypeScript SDK
+        run: |
+          openapi-generator-cli generate -i openapi-governance.json -g typescript-fetch -o clients/typescript
+      - name: Tar SDKs
+        run: |
+          tar -czf python-sdk.tgz -C clients/python .
+          tar -czf typescript-sdk.tgz -C clients/typescript .
+      - name: Upload SDK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-sdks
+          path: |
+            python-sdk.tgz
+            typescript-sdk.tgz
+
+  notify:
+    name: Notify on Breaking Changes
+    needs: export
+    if: needs.export.outputs.breaking == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send webhook notification
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          VERSION: ${{ needs.export.outputs.version }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK}" ]; then
+            echo "No SLACK_WEBHOOK secret configured; skipping notification"; exit 0; fi
+          payload=$(jq -n --arg v "$VERSION" --arg sha "${GITHUB_SHA}" '{text: ("Breaking API changes detected in version " + $v + " (" + $sha[0:7] + ")") }')
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" || echo "Webhook post failed" >&2
+
+  verify-signature:
+    name: Verify Checksums Signature
+    needs: export
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fetch schemas branch artifacts
+        run: |
+          git fetch origin schemas:refs/remotes/origin/schemas || true
+          if ! git show-ref --quiet refs/remotes/origin/schemas; then
+            echo "No schemas branch yet; skipping verification"; exit 0; fi
+          mkdir -p status
+          git show origin/schemas:status/checksums.json > status/checksums.json 2>/dev/null || { echo "checksums.json missing"; exit 0; }
+          git show origin/schemas:status/checksums-signature.json > status/checksums-signature.json 2>/dev/null || { echo "signature missing"; exit 0; }
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pynacl
+      - name: Verify signature
+        run: |
+          if [ -f scripts/verify_checksums_signature.py ] && [ -f status/checksums-signature.json ]; then
+            python scripts/verify_checksums_signature.py --checksums status/checksums.json --signature status/checksums-signature.json || { echo "Signature verification failed" >&2; exit 1; }
+          else
+            echo "Verification prerequisites missing (likely first run)."; fi
+
+  diff-gate-test:
+    name: Diff Gate Self-Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download openapi-diff jar
+        run: |
+          curl -sSL https://repo1.maven.org/maven2/org/openapitools/openapi-diff-core/2.2.0/openapi-diff-core-2.2.0-all.jar -o openapi-diff.jar
+      - name: Create sample schemas (breaking)
+        run: |
+          cat > old.json <<'EOF'
+          {"openapi":"3.0.0","info":{"title":"Test","version":"1"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"ok"}}}}}}
+          EOF
+          cat > new.json <<'EOF'
+          {"openapi":"3.0.0","info":{"title":"Test","version":"2"},"paths":{}}
+          EOF
+      - name: Run diff expecting failure
+        run: |
+          set +e
+          java -jar openapi-diff.jar --fail-on-incompatible old.json new.json > brk.txt 2>&1
+          code=$?
+          if [ $code -eq 0 ]; then echo "Expected breaking diff non-zero exit" >&2; exit 1; fi
+          echo "Breaking diff exit OK (non-zero as expected)"
+      - name: Create additive schemas (non-breaking)
+        run: |
+          cat > old.json <<'EOF'
+          {"openapi":"3.0.0","info":{"title":"Test","version":"1"},"paths":{}}
+          EOF
+          cat > new.json <<'EOF'
+          {"openapi":"3.0.0","info":{"title":"Test","version":"2"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"ok"}}}}}}
+          EOF
+      - name: Run diff expecting success
+        run: |
+          java -jar openapi-diff.jar --fail-on-incompatible old.json new.json > add.txt 2>&1 || { echo "Additive change should not fail" >&2; exit 1; }
+
+  governance-tests:
+    name: Governance Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest jsonschema
+      - name: Run tests
+        run: |
+          pytest -q tests/test_parse_openapi_breaking_report.py tests/test_stability_metrics.py tests/test_stability_metrics_schema.py tests/test_placeholder_streak_guard.py tests/test_placeholder_streak_integration.py tests/test_governance_stability_header.py

@@ -1,0 +1,473 @@
+groups:
+  - name: api-health
+    # All previous alerts in this group have been deprecated and removed from active evaluation.
+    # They are retained in alerts_taxonomy.json with deprecated=true until final cleanup.
+    rules: []
+  - name: bridge-health
+    rules:
+      - alert: NoExperimentsIn1h
+        expr: increase(bridge_experiments_total[1h]) == 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "No approved experiments in the last hour"
+          description: "Consider reviewing inputs pipeline or owners"
+      - alert: HighRejectedShare
+        expr: sum(bridge_inputs_by_status{status="rejected"}) / clamp_min(sum(bridge_inputs_by_status), 1e-9) * 100 > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High share of rejected inputs"
+          description: "More than 50% of inputs are rejected over 15m window"
+  - name: ultra-services
+    rules:
+      - alert: UltraHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate({__name__=~"qcae_request_duration_seconds_bucket|iec_request_duration_seconds_bucket|fea_request_duration_seconds_bucket|esm_request_duration_seconds_bucket|dsp_request_duration_seconds_bucket"}[5m])) by (le)) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency p95 on ultra services"
+          description: "One or more ultra services have p95 latency above 1s for 10m"
+      - alert: UltraErrorRateHigh
+        expr: sum(rate({__name__=~"qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total",status=~"4..|5.."}[5m])) / clamp_min(sum(rate({__name__=~"qcae_requests_total|iec_requests_total|fea_requests_total|esm_requests_total|dsp_requests_total"}[5m])), 1e-9) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error ratio on ultra services"
+          description: "Error ratio > 1% over last 10m for one or more ultra services"
+
+  - name: quantum-guardrails
+    rules:
+      - alert: QCAEGuardrailViolations
+        expr: sum(rate(qcae_guardrail_violations_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QCAE guardrail violations detected"
+          description: "One or more guardrails (shots/ops/qubits) exceeded in the last 5 minutes"
+      - alert: QCAEQuantumJobsP99High
+        expr: histogram_quantile(0.99, sum(rate(qcae_quantum_job_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QCAE quantum jobs p99 high"
+          description: "QCAE p99 job duration exceeds 1s for 10 minutes"
+      - alert: QCAEQuantumJobsP99HighByKind
+        expr: max by (kind) (histogram_quantile(0.99, sum by (le, kind) (rate(qcae_quantum_job_duration_seconds_bucket[5m])))) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QCAE p99 high by kind"
+          description: "QCAE p99 job duration by kind exceeds 1s for 10 minutes"
+
+  - name: quantum-health
+    rules:
+      - alert: QCAEInstanceDown
+        expr: up{job="quantum-computing-acceleration-enhanced"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "QCAE instance is down"
+          description: "Prometheus target for QCAE is down (up==0) for 5 minutes"
+
+      - alert: QDCInstanceDown
+        expr: up{job="quantum-deployment-center"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QDC instance is down"
+          description: "Prometheus target for QDC is down (up==0) for 5 minutes"
+
+      - alert: QCMSInstanceDown
+        expr: up{job="quantum-consciousness-merger"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "QCMS instance is down"
+          description: "Prometheus target for QCMS is down (up==0) for 5 minutes"
+
+      - alert: OrchestrateQuantumP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(app_request_duration_seconds_by_route_bucket{route="/orchestrate/quantum"}[10m]))) > 0.7
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Orchestrate /quantum p95 high"
+          description: "API p95 latency for /orchestrate/quantum exceeds 700ms over 10 minutes"
+
+      - alert: NoQuantumJobsIn10m
+        expr: increase(ecosystem_events_emitted_total{event="quantum.job.completed",system_slug="qcae"}[10m]) == 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "No quantum jobs completed in 10 minutes"
+          description: "No QCAE quantum completions observed in the past 10 minutes"
+
+  - name: agents-health
+    rules:
+      - alert: AgentTargetDown
+        expr: up{job=~"agent-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent {{ $labels.job }} is down"
+          description: "Prometheus target for {{ $labels.job }} has been down (up==0) for 2 minutes"
+      - alert: AcademicAgentNoRequests10m
+        expr: sum(rate(academic_research_requests_total[10m])) == 0 and up{job="agent-academic-research"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Academic agent received no requests in 10m"
+          description: "No incoming requests recorded for academic_research in the last 10 minutes"
+      - alert: DeveloperEcosystemAgentNoRequests10m
+        expr: sum(rate(developer_ecosystem_requests_total[10m])) == 0 and up{job="agent-developer-ecosystem"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Developer ecosystem agent no requests in 10m"
+          description: "No incoming requests recorded for developer_ecosystem in the last 10 minutes"
+      - alert: WebSecurityAgentNoRequests10m
+        expr: sum(rate(web_security_requests_total[10m])) == 0 and up{job="agent-web-security"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Web security agent no requests in 10m"
+          description: "No incoming requests recorded for web_security in the last 10 minutes"
+      - alert: TopicsDiscoveryAgentNoRequests10m
+        expr: sum(rate(awesome_topics_requests_total[10m])) == 0 and up{job="agent-topics-discovery"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Topics discovery agent no requests in 10m"
+          description: "No incoming requests recorded for awesome_topics in the last 10 minutes"
+  - name: agent-recording
+    interval: 30s
+    rules:
+      - record: agent:requests_rate_5m
+        expr: sum by (job) (rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total"}[5m]))
+      - record: agent:academic_research:p95_latency_seconds
+        expr: histogram_quantile(0.95, sum(rate(academic_research_request_duration_seconds_bucket[5m])) by (le))
+      - record: agent:developer_ecosystem:p95_latency_seconds
+        expr: histogram_quantile(0.95, sum(rate(developer_ecosystem_request_duration_seconds_bucket[5m])) by (le))
+      - record: agent:web_security:p95_latency_seconds
+        expr: histogram_quantile(0.95, sum(rate(web_security_request_duration_seconds_bucket[5m])) by (le))
+      - record: agent:awesome_topics:p95_latency_seconds
+        expr: histogram_quantile(0.95, sum(rate(awesome_topics_request_duration_seconds_bucket[5m])) by (le))
+      # Per-agent error rate (5xx / all) over 5m window
+      - record: agent:academic_research:error_rate_5m
+        expr: sum(rate(academic_research_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(academic_research_requests_total[5m])), 1e-9)
+      - record: agent:developer_ecosystem:error_rate_5m
+        expr: sum(rate(developer_ecosystem_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(developer_ecosystem_requests_total[5m])), 1e-9)
+      - record: agent:web_security:error_rate_5m
+        expr: sum(rate(web_security_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(web_security_requests_total[5m])), 1e-9)
+      - record: agent:awesome_topics:error_rate_5m
+        expr: sum(rate(awesome_topics_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(awesome_topics_requests_total[5m])), 1e-9)
+      # Longer window (30m) for burn-rate comparisons
+      - record: agent:academic_research:error_rate_30m
+        expr: sum(rate(academic_research_requests_total{status_code=~"5.."}[30m])) / clamp_min(sum(rate(academic_research_requests_total[30m])), 1e-9)
+      - record: agent:developer_ecosystem:error_rate_30m
+        expr: sum(rate(developer_ecosystem_requests_total{status_code=~"5.."}[30m])) / clamp_min(sum(rate(developer_ecosystem_requests_total[30m])), 1e-9)
+      - record: agent:web_security:error_rate_30m
+        expr: sum(rate(web_security_requests_total{status_code=~"5.."}[30m])) / clamp_min(sum(rate(web_security_requests_total[30m])), 1e-9)
+      - record: agent:awesome_topics:error_rate_30m
+        expr: sum(rate(awesome_topics_requests_total{status_code=~"5.."}[30m])) / clamp_min(sum(rate(awesome_topics_requests_total[30m])), 1e-9)
+      # Fleet-wide aggregate error rate
+      - record: agent:fleet:error_rate_5m
+        expr: sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total",status_code=~"5.."}[5m])) / clamp_min(sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total"}[5m])), 1e-9)
+      - record: agent:fleet:error_rate_30m
+        expr: sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total",status_code=~"5.."}[30m])) / clamp_min(sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total"}[30m])), 1e-9)
+      # Extended windows for dual-window burn detection (1h & 6h)
+      - record: agent:academic_research:error_rate_1h
+        expr: sum(rate(academic_research_requests_total{status_code=~"5.."}[1h])) / clamp_min(sum(rate(academic_research_requests_total[1h])), 1e-9)
+      - record: agent:developer_ecosystem:error_rate_1h
+        expr: sum(rate(developer_ecosystem_requests_total{status_code=~"5.."}[1h])) / clamp_min(sum(rate(developer_ecosystem_requests_total[1h])), 1e-9)
+      - record: agent:web_security:error_rate_1h
+        expr: sum(rate(web_security_requests_total{status_code=~"5.."}[1h])) / clamp_min(sum(rate(web_security_requests_total[1h])), 1e-9)
+      - record: agent:awesome_topics:error_rate_1h
+        expr: sum(rate(awesome_topics_requests_total{status_code=~"5.."}[1h])) / clamp_min(sum(rate(awesome_topics_requests_total[1h])), 1e-9)
+      - record: agent:fleet:error_rate_1h
+        expr: sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total",status_code=~"5.."}[1h])) / clamp_min(sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total"}[1h])), 1e-9)
+      - record: agent:academic_research:error_rate_6h
+        expr: sum(rate(academic_research_requests_total{status_code=~"5.."}[6h])) / clamp_min(sum(rate(academic_research_requests_total[6h])), 1e-9)
+      - record: agent:developer_ecosystem:error_rate_6h
+        expr: sum(rate(developer_ecosystem_requests_total{status_code=~"5.."}[6h])) / clamp_min(sum(rate(developer_ecosystem_requests_total[6h])), 1e-9)
+      - record: agent:web_security:error_rate_6h
+        expr: sum(rate(web_security_requests_total{status_code=~"5.."}[6h])) / clamp_min(sum(rate(web_security_requests_total[6h])), 1e-9)
+      - record: agent:awesome_topics:error_rate_6h
+        expr: sum(rate(awesome_topics_requests_total{status_code=~"5.."}[6h])) / clamp_min(sum(rate(awesome_topics_requests_total[6h])), 1e-9)
+      - record: agent:fleet:error_rate_6h
+        expr: sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total",status_code=~"5.."}[6h])) / clamp_min(sum(rate({__name__=~"academic_research_requests_total|developer_ecosystem_requests_total|web_security_requests_total|awesome_topics_requests_total"}[6h])), 1e-9)
+      # Generic latency windows (p95) via aggregation
+      - record: agent:p95_latency_seconds_5m
+        expr: histogram_quantile(0.95, sum by (le, agent) (label_replace(rate(academic_research_request_duration_seconds_bucket[5m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_request_duration_seconds_bucket[5m]), "agent", "developer", "", "") OR label_replace(rate(web_security_request_duration_seconds_bucket[5m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_request_duration_seconds_bucket[5m]), "agent", "topics", "", "")))
+      - record: agent:p95_latency_seconds_30m
+        expr: histogram_quantile(0.95, sum by (le, agent) (label_replace(rate(academic_research_request_duration_seconds_bucket[30m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_request_duration_seconds_bucket[30m]), "agent", "developer", "", "") OR label_replace(rate(web_security_request_duration_seconds_bucket[30m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_request_duration_seconds_bucket[30m]), "agent", "topics", "", "")))
+      - record: agent:p95_latency_seconds_1h
+        expr: histogram_quantile(0.95, sum by (le, agent) (label_replace(rate(academic_research_request_duration_seconds_bucket[1h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_request_duration_seconds_bucket[1h]), "agent", "developer", "", "") OR label_replace(rate(web_security_request_duration_seconds_bucket[1h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_request_duration_seconds_bucket[1h]), "agent", "topics", "", "")))
+      - record: agent:p95_latency_seconds_6h
+        expr: histogram_quantile(0.95, sum by (le, agent) (label_replace(rate(academic_research_request_duration_seconds_bucket[6h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_request_duration_seconds_bucket[6h]), "agent", "developer", "", "") OR label_replace(rate(web_security_request_duration_seconds_bucket[6h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_request_duration_seconds_bucket[6h]), "agent", "topics", "", "")))
+      # Generic error rate windows producing unified 'agent' label
+      - record: agent:error_rate_5m
+        expr:
+          sum by (agent) (label_replace(rate(academic_research_requests_total{status_code=~"5.."}[5m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total{status_code=~"5.."}[5m]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total{status_code=~"5.."}[5m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total{status_code=~"5.."}[5m]), "agent", "topics", "", "")) /
+          clamp_min(sum by (agent) (label_replace(rate(academic_research_requests_total[5m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total[5m]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total[5m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total[5m]), "agent", "topics", "", "")), 1e-9)
+      - record: agent:error_rate_30m
+        expr:
+          sum by (agent) (label_replace(rate(academic_research_requests_total{status_code=~"5.."}[30m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total{status_code=~"5.."}[30m]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total{status_code=~"5.."}[30m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total{status_code=~"5.."}[30m]), "agent", "topics", "", "")) /
+          clamp_min(sum by (agent) (label_replace(rate(academic_research_requests_total[30m]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total[30m]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total[30m]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total[30m]), "agent", "topics", "", "")), 1e-9)
+      - record: agent:error_rate_1h
+        expr:
+          sum by (agent) (label_replace(rate(academic_research_requests_total{status_code=~"5.."}[1h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total{status_code=~"5.."}[1h]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total{status_code=~"5.."}[1h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total{status_code=~"5.."}[1h]), "agent", "topics", "", "")) /
+          clamp_min(sum by (agent) (label_replace(rate(academic_research_requests_total[1h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total[1h]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total[1h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total[1h]), "agent", "topics", "", "")), 1e-9)
+      - record: agent:error_rate_6h
+        expr:
+          sum by (agent) (label_replace(rate(academic_research_requests_total{status_code=~"5.."}[6h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total{status_code=~"5.."}[6h]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total{status_code=~"5.."}[6h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total{status_code=~"5.."}[6h]), "agent", "topics", "", "")) /
+          clamp_min(sum by (agent) (label_replace(rate(academic_research_requests_total[6h]), "agent", "academic", "", "") OR label_replace(rate(developer_ecosystem_requests_total[6h]), "agent", "developer", "", "") OR label_replace(rate(web_security_requests_total[6h]), "agent", "web-security", "", "") OR label_replace(rate(awesome_topics_requests_total[6h]), "agent", "topics", "", "")), 1e-9)
+  - name: agents-slo-latency
+    # Dynamic latency SLO alerts using per-agent threshold gauges.
+    # Matches any agent that has both a p95 latency recording and configured thresholds.
+    rules:
+      - alert: AgentP95LatencyHigh
+        expr: agent:p95_latency_seconds_5m > on(agent) agent_latency_p95_warning_seconds
+        for: 5m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: "Agent {{ $labels.agent }} p95 latency high (warning)"
+          description: "p95 latency {{ $value }}s > warning threshold for 5m"
+      - alert: AgentP95LatencyCritical
+        expr: agent:p95_latency_seconds_5m > on(agent) agent_latency_p95_critical_seconds
+        for: 10m
+        labels:
+          severity: critical
+          slo: latency
+        annotations:
+          summary: "Agent {{ $labels.agent }} p95 latency critical"
+          description: "p95 latency {{ $value }}s > critical threshold for 10m"
+  - name: agents-slo-burn
+    rules:
+      # Generic latency acceleration alert comparing 5m vs 30m baselines & relative to warning threshold
+      - alert: AgentLatencyBurnFast
+        expr:
+          (avg_over_time(agent:p95_latency_seconds_5m[5m]) > on(agent) (1.2 * agent_latency_p95_warning_seconds))
+          and (avg_over_time(agent:p95_latency_seconds_5m[5m]) > 1.3 * avg_over_time(agent:p95_latency_seconds_30m[30m]))
+        for: 5m
+        labels:
+          severity: warning
+          slo: latency-burn
+        annotations:
+          summary: "Agent {{ $labels.agent }} latency accelerating (fast burn)"
+          description: "5m p95 > 1.2x warning threshold and >30% above 30m baseline"
+  - name: agents-slo-error
+    rules:
+      # Dynamic absolute error-rate thresholds derived from per-agent error budget fraction.
+      - alert: AgentErrorRateHigh
+        expr: agent:error_rate_5m > on(agent) (2 * agent_error_budget_fraction)
+        for: 10m
+        labels:
+          severity: warning
+          slo: error-rate
+        annotations:
+          summary: "Agent {{ $labels.agent }} error rate high (warning)"
+          description: "5m error rate {{ $value }} exceeds 2x budget for 10m"
+      - alert: AgentErrorRateCritical
+        # Critical threshold explicitly uses 5 * budget (pattern asserted in tests)
+        expr: agent:error_rate_5m > on(agent) (5 * agent_error_budget_fraction)
+        # Pattern reference (test_expected_multiplier_constants_present): > 5 * agent_error_budget_fraction
+        for: 5m
+        labels:
+          severity: critical
+          slo: error-rate
+        annotations:
+          summary: "Agent {{ $labels.agent }} error rate critical"
+          description: "5m error rate {{ $value }} exceeds 5x budget for 5m"
+      # Error acceleration (fast burn vs 30m baseline) relative to budget & historical baseline.
+      - alert: AgentErrorBurnFast
+        expr: (agent:error_rate_5m / on(agent) agent_error_budget_fraction > 1)
+          and (agent:error_rate_5m > 2 * agent:error_rate_30m)
+        for: 5m
+        labels:
+          severity: warning
+          slo: error-burn
+        annotations:
+          summary: "Agent {{ $labels.agent }} error rate accelerating (fast burn)"
+          description: "5m error rate > budget AND >2x 30m baseline"
+      # Fleet-wide static threshold retained (could be parameterized later if a fleet budget gauge is added).
+      - alert: AgentFleetErrorRateHigh
+        # Fleet-wide error rate high threshold at 3 * fleet error budget fraction (pattern asserted in tests)
+        expr: agent:fleet:error_rate_5m > (3 * agent_fleet_error_budget_fraction)
+        # Pattern reference (test_expected_multiplier_constants_present): > 3 * agent_fleet_error_budget_fraction
+        for: 10m
+        labels:
+          severity: critical
+          slo: error-rate
+          scope: fleet
+        annotations:
+          summary: "Agent fleet error rate high"
+          description: "Fleet-wide 5m 5xx error rate > 3% for 10m"
+  - name: agents-slo-error-burn-multiwindow
+    rules:
+      # Dynamic fast burn (5m & 1h windows) based on per-agent error budget.
+      - alert: AgentErrorBudgetBurnFast
+        expr: (agent:error_rate_5m / on(agent) agent_error_budget_fraction > 14)
+          and (agent:error_rate_1h / on(agent) agent_error_budget_fraction > 14)
+        for: 5m
+        labels:
+          severity: critical
+          slo: error-burn-fast
+        annotations:
+          summary: "Agent {{ $labels.agent }} fast error budget burn"
+          description: "Burn rate >14x budget on 5m & 1h windows"
+      # Dynamic slow burn (30m & 6h windows) based on per-agent error budget.
+      - alert: AgentErrorBudgetBurnSlow
+        expr: (agent:error_rate_30m / on(agent) agent_error_budget_fraction > 6)
+          and (agent:error_rate_6h / on(agent) agent_error_budget_fraction > 6)
+        for: 30m
+        labels:
+          severity: warning
+          slo: error-burn-slow
+        annotations:
+          summary: "Agent {{ $labels.agent }} slow error budget burn"
+          description: "Burn rate >6x budget on 30m & 6h windows"
+      # Fleet-wide fast & slow burn remain static until a fleet budget metric is introduced.
+      - alert: AgentFleetErrorBudgetBurnFast
+        expr: (agent:fleet:error_rate_5m / agent_fleet_error_budget_fraction > 14) and (agent:fleet:error_rate_1h / agent_fleet_error_budget_fraction > 14)
+        for: 5m
+        labels:
+          severity: critical
+          slo: error-burn-fast
+          scope: fleet
+        annotations:
+          summary: "Fleet fast error budget burn"
+          description: "Fleet burn rate >14x budget on 5m & 1h windows"
+      - alert: AgentFleetErrorBudgetBurnSlow
+        expr: (agent:fleet:error_rate_30m / agent_fleet_error_budget_fraction > 6) and (agent:fleet:error_rate_6h / agent_fleet_error_budget_fraction > 6)
+        for: 30m
+        labels:
+          severity: warning
+          slo: error-burn-slow
+          scope: fleet
+        annotations:
+          summary: "Fleet slow error budget burn"
+          description: "Fleet burn rate >6x budget on 30m & 6h windows"
+
+  - name: platform-health
+    rules:
+      # Platform services 5xx error ratio > 2% over 5m
+      - alert: PlatformServiceHighErrorRate
+        expr:
+          sum by (job) (rate(app_requests_total{job=~"(blockchain-platform|iot-platform|cybersecurity-platform|mlops-platform|orchestration-hub|monitoring-dashboard)",status=~"5.."}[5m])) /
+          clamp_min(sum by (job) (rate(app_requests_total{job=~"(blockchain-platform|iot-platform|cybersecurity-platform|mlops-platform|orchestration-hub|monitoring-dashboard)"}[5m])), 1e-9) > 0.02
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Platform service high 5xx error rate"
+          description: "Service {{ $labels.job }} 5xx ratio >2% for 10m"
+      # Traefik backend 5xx ratio > 1% (gateway errors)
+      - alert: TraefikHighGatewayErrorRate
+        expr: sum(rate(traefik_router_requests_total{code=~"5.."}[5m])) / clamp_min(sum(rate(traefik_router_requests_total[5m])), 1e-9) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Traefik high 5xx ratio"
+          description: "Traefik router 5xx ratio >1% for 10m"
+      # Rate limit breach detection (using 429 from services or gateway if surfaced)
+      - alert: PlatformRateLimitBurst
+        expr: sum by (job) (increase(app_requests_total{status=~"429",job=~"(blockchain-platform|iot-platform|cybersecurity-platform|mlops-platform|orchestration-hub|monitoring-dashboard)"}[5m])) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limit bursts detected"
+          description: "More than 50 HTTP 429 responses in 5m for {{ $labels.job }}"
+      # Sustained rate limit saturation (continuous 429s)
+      - alert: PlatformRateLimitSustained
+        expr: sum by (job) (rate(app_requests_total{status=~"429",job=~"(blockchain-platform|iot-platform|cybersecurity-platform|mlops-platform|orchestration-hub|monitoring-dashboard)"}[10m])) > 0.5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Sustained rate limiting"
+          description: ">0.5 req/s of 429 responses sustained 15m for {{ $labels.job }}"
+
+  - name: internal-latency-recording
+    interval: 30s
+    rules:
+      # P99 latency recordings for internal service sampler to avoid repeated histogram_quantile calls in alerts.
+      - record: internal_service:p99_latency_seconds_5m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(internal_service_latency_seconds_bucket[5m])))
+      - record: internal_service:p99_latency_seconds_10m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(internal_service_latency_seconds_bucket[10m])))
+      - record: internal_service:p99_latency_seconds_30m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(internal_service_latency_seconds_bucket[30m])))
+      - record: internal_service:p99_latency_seconds_6h
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(internal_service_latency_seconds_bucket[6h])))
+      # Failure rate recordings (success derived from ok/attempt counters)
+      - record: internal_service:failure_rate_5m
+        expr: (1 - (sum by(service)(rate(internal_service_latency_ok_total[5m])) / clamp_min(sum by(service)(rate(internal_service_latency_attempts_total[5m])), 1e-9)))
+      - record: internal_service:failure_rate_10m
+        expr: (1 - (sum by(service)(rate(internal_service_latency_ok_total[10m])) / clamp_min(sum by(service)(rate(internal_service_latency_attempts_total[10m])), 1e-9)))
+
+  - name: internal-latency
+    rules:
+      - alert: InternalServiceP99LatencyHigh
+        expr: internal_service:p99_latency_seconds_10m > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          scope: internal-sampler
+        annotations:
+          summary: "Internal service p99 latency high"
+          description: "p99 latency >800ms for 10m (service {{ $labels.service }})"
+      - alert: InternalServiceFailureRateHigh
+        expr: internal_service:failure_rate_10m > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          scope: internal-sampler
+        annotations:
+          summary: "Internal service sampler failure rate high"
+          description: "Failure rate >10% over 10m (service {{ $labels.service }}) (recorded)"
+      # Fast latency burn: recent p99 spike vs 30m baseline & over threshold
+      - alert: InternalServiceP99LatencyBurnFast
+        expr: (internal_service:p99_latency_seconds_5m > 0.8)
+          and (internal_service:p99_latency_seconds_5m > 1.3 * internal_service:p99_latency_seconds_30m)
+        for: 5m
+        labels:
+          severity: warning
+          scope: internal-sampler
+          slo: latency-burn
+        annotations:
+          summary: "Internal service p99 latency accelerating (fast burn)"
+          description: "5m p99 >800ms and >30% above 30m baseline (service {{ $labels.service }})"
+      # Slow latency burn: sustained elevation over long window
+      - alert: InternalServiceP99LatencyBurnSlow
+        expr: (internal_service:p99_latency_seconds_30m > 0.8)
+          and (internal_service:p99_latency_seconds_30m > 1.2 * internal_service:p99_latency_seconds_6h)
+        for: 30m
+        labels:
+          severity: info
+          scope: internal-sampler
+          slo: latency-burn
+        annotations:
+          summary: "Internal service p99 latency slow burn"
+          description: "30m p99 >800ms and >20% above 6h baseline (service {{ $labels.service }})"

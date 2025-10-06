@@ -1,0 +1,8 @@
+# Quantum Computing Center Dockerfile
+FROM python:3.11-slim-bookworm
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt && pip install --no-cache-dir prometheus-client fastapi uvicorn
+COPY quantum_computing_center.py /app/quantum_computing_center.py
+EXPOSE 5053
+CMD ["uvicorn", "quantum_computing_center:app", "--host", "0.0.0.0", "--port", "5053"]

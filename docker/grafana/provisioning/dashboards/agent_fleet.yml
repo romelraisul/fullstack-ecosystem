@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: agent-fleet
+    orgId: 1
+    folder: Agents
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/custom-dashboards

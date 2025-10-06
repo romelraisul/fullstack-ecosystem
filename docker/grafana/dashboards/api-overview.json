@@ -1,0 +1,252 @@
+{
+    "title": "API Overview",
+    "uid": "api-overview",
+    "version": 3,
+    "templating": {
+        "list": []
+    },
+    "links": [
+        {
+            "title": "Alertmanager UI",
+            "url": "http://localhost:9094/",
+            "targetBlank": true
+        },
+        {
+            "title": "Teams sink log",
+            "url": "http://localhost:8010/_teams-sink/log",
+            "targetBlank": true
+        },
+        {
+            "title": "Alerts Overview",
+            "url": "/d/alerts-overview",
+            "targetBlank": false
+        }
+    ],
+    "panels": [
+        {
+            "title": "App Health",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "app_health"
+                }
+            ],
+            "links": [
+                {
+                    "title": "Route Detail",
+                    "url": "/d/route-detail?var-method=All&var-route=All",
+                    "targetBlank": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Requests",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "rate(app_requests_total[1m])"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                },
+                "overrides": []
+            },
+            "links": [
+                {
+                    "title": "Route Detail",
+                    "url": "/d/route-detail?var-method=All&var-route=All",
+                    "targetBlank": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 6,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "API Latency (P95/P99)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(app_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "p95"
+                },
+                {
+                    "expr": "histogram_quantile(0.99, sum(rate(app_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "p99"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.5
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "links": [
+                {
+                    "title": "Route Detail",
+                    "url": "/d/route-detail?var-method=All&var-route=All",
+                    "targetBlank": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 14,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Success ratio (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(1 - (sum(rate(app_requests_errors_total[5m])) / clamp_min(sum(rate(app_requests_total[5m])), 1e-9))) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit"
+                }
+            },
+            "links": [
+                {
+                    "title": "Route Detail",
+                    "url": "/d/route-detail?var-method=All&var-route=All",
+                    "targetBlank": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 22,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Error rate (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum(rate(app_requests_errors_total[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "links": [
+                {
+                    "title": "Route Detail",
+                    "url": "/d/route-detail?var-method=All&var-route=All",
+                    "targetBlank": true
+                }
+            ],
+            "gridPos": {
+                "x": 12,
+                "y": 22,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Internal Service Latency Class",
+            "type": "state-timeline",
+            "description": "Discrete classification of last sampled internal latency (0=good,1=warn,2=high,3=na)",
+            "targets": [
+                {
+                    "expr": "internal_service_latency_class"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "lineWidth": 0
+                    },
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                "0": {
+                                    "text": "good"
+                                },
+                                "1": {
+                                    "text": "warn"
+                                },
+                                "2": {
+                                    "text": "high"
+                                },
+                                "3": {
+                                    "text": "na"
+                                }
+                            }
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1
+                            },
+                            {
+                                "color": "red",
+                                "value": 2
+                            },
+                            {
+                                "color": "gray",
+                                "value": 3
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "showValue": "auto",
+                "rowHeight": 0.9,
+                "legend": {
+                    "show": false
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 28,
+                "w": 24,
+                "h": 6
+            }
+        }
+    ]
+}

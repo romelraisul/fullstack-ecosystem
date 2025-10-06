@@ -1,0 +1,10 @@
+# Heavy ML dependencies (optional)
+torch>=2.0.0
+tensorflow>=2.13.0
+scikit-learn>=1.2.0
+scipy>=1.11.0
+numpy>=1.26.0
+pandas>=2.0.0
+sentence-transformers>=2.2.2
+# faiss can be problematic on Windows with pip; provide CPU variant comment
+# faiss-cpu

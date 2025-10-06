@@ -1,0 +1,313 @@
+{
+    "last_updated": "2025-09-29T00:00:00Z",
+    "alerts": [
+        {
+            "id": "svc-high-error-rate",
+            "alert": "HighErrorRate_ServiceA",
+            "severity": "high",
+            "created_at": "2025-09-01T12:00:00Z",
+            "runbook": "Deprecated placeholder",
+            "deprecated": true
+        },
+        {
+            "id": "svc-latency-warning",
+            "alert": "HighLatency_ServiceB",
+            "severity": "medium",
+            "created_at": "2025-09-15T12:00:00Z",
+            "runbook": "Deprecated placeholder",
+            "deprecated": true
+        },
+        {
+            "id": "bridge-no-experiments",
+            "alert": "NoExperimentsIn1h",
+            "severity": "info",
+            "category": "bridge",
+            "runbook": "Investigate experiment approval pipeline; ensure inputs are being reviewed.",
+            "deprecated": false
+        },
+        {
+            "id": "bridge-high-rejected-share",
+            "alert": "HighRejectedShare",
+            "severity": "warning",
+            "category": "bridge",
+            "runbook": "Review rejection reasons; adjust submission guidelines or scoring.",
+            "deprecated": false
+        },
+        {
+            "id": "ultra-latency-p95",
+            "alert": "UltraHighLatencyP95",
+            "severity": "warning",
+            "category": "ultra-services",
+            "runbook": "Check upstream ultra services latency, resource saturation, and recent deploys.",
+            "deprecated": false
+        },
+        {
+            "id": "ultra-error-rate",
+            "alert": "UltraErrorRateHigh",
+            "severity": "warning",
+            "category": "ultra-services",
+            "runbook": "Inspect 5xx logs, recent deploys, and dependency health for ultra services.",
+            "deprecated": false
+        },
+        {
+            "id": "qcae-guardrail-violations",
+            "alert": "QCAEGuardrailViolations",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Review guardrail violation logs; assess workload or configuration anomalies.",
+            "deprecated": false
+        },
+        {
+            "id": "qcae-quantum-p99",
+            "alert": "QCAEQuantumJobsP99High",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Investigate slow quantum job executions; check simulator load and contention.",
+            "deprecated": false
+        },
+        {
+            "id": "qcae-quantum-p99-by-kind",
+            "alert": "QCAEQuantumJobsP99HighByKind",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Identify specific job kind with high p99; optimize or throttle that workflow.",
+            "deprecated": false
+        },
+        {
+            "id": "qcae-instance-down",
+            "alert": "QCAEInstanceDown",
+            "severity": "critical",
+            "category": "quantum",
+            "runbook": "Check QCAE process/container status; restart service; inspect logs for crashes.",
+            "deprecated": false
+        },
+        {
+            "id": "qdc-instance-down",
+            "alert": "QDCInstanceDown",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Verify QDC deployment service availability; restart if necessary.",
+            "deprecated": false
+        },
+        {
+            "id": "qcms-instance-down",
+            "alert": "QCMSInstanceDown",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Check QCMS health endpoint; investigate underlying consciousness merger components.",
+            "deprecated": false
+        },
+        {
+            "id": "orchestrate-quantum-p95-high",
+            "alert": "OrchestrateQuantumP95High",
+            "severity": "warning",
+            "category": "quantum",
+            "runbook": "Analyze /orchestrate/quantum route latency; review downstream services and load.",
+            "deprecated": false
+        },
+        {
+            "id": "no-quantum-jobs-10m",
+            "alert": "NoQuantumJobsIn10m",
+            "severity": "info",
+            "category": "quantum",
+            "runbook": "Confirm scheduled jobs; ensure orchestrator emits quantum.job.completed events.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-target-down",
+            "alert": "AgentTargetDown",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Check agent container/pod status; verify Prometheus scrape target availability.",
+            "deprecated": false
+        },
+        {
+            "id": "academic-agent-no-requests",
+            "alert": "AcademicAgentNoRequests10m",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Validate traffic sources for academic agent; confirm routing and upstream demand.",
+            "deprecated": false
+        },
+        {
+            "id": "developer-ecosystem-agent-no-requests",
+            "alert": "DeveloperEcosystemAgentNoRequests10m",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Check developer ecosystem agent ingress & recent deploys.",
+            "deprecated": false
+        },
+        {
+            "id": "web-security-agent-no-requests",
+            "alert": "WebSecurityAgentNoRequests10m",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Ensure web security agent endpoints are reachable; inspect logs.",
+            "deprecated": false
+        },
+        {
+            "id": "topics-discovery-agent-no-requests",
+            "alert": "TopicsDiscoveryAgentNoRequests10m",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Validate topics discovery traffic; ensure upstream scheduler active.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-p95-latency-high",
+            "alert": "AgentP95LatencyHigh",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Inspect agent latency metrics vs warning thresholds; review recent deploys.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-p95-latency-critical",
+            "alert": "AgentP95LatencyCritical",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Critical latency breach; roll back recent changes or scale resources.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-latency-burn-fast",
+            "alert": "AgentLatencyBurnFast",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Latency accelerating vs baseline; check sudden workload or resource contention.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-error-rate-high",
+            "alert": "AgentErrorRateHigh",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Examine 5xx responses; identify common failure signatures.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-error-rate-critical",
+            "alert": "AgentErrorRateCritical",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Critical error surge; rollback or scale; prioritize high-impact errors.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-error-burn-fast",
+            "alert": "AgentErrorBurnFast",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Short-window error acceleration; compare to 30m baseline.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-fleet-error-rate-high",
+            "alert": "AgentFleetErrorRateHigh",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Fleet-wide error spike; look for shared infrastructure or config issues.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-error-budget-burn-fast",
+            "alert": "AgentErrorBudgetBurnFast",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Fast budget burn >14x; immediate mitigation required (rollback/scale).",
+            "deprecated": false
+        },
+        {
+            "id": "agent-error-budget-burn-slow",
+            "alert": "AgentErrorBudgetBurnSlow",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Sustained elevated errors >6x; plan remediation and capacity review.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-fleet-error-budget-burn-fast",
+            "alert": "AgentFleetErrorBudgetBurnFast",
+            "severity": "critical",
+            "category": "agents",
+            "runbook": "Fleet fast burn >14x; investigate systemic platform issues.",
+            "deprecated": false
+        },
+        {
+            "id": "agent-fleet-error-budget-burn-slow",
+            "alert": "AgentFleetErrorBudgetBurnSlow",
+            "severity": "warning",
+            "category": "agents",
+            "runbook": "Fleet slow burn >6x; monitor for escalation; plan optimization.",
+            "deprecated": false
+        },
+        {
+            "id": "platform-service-high-error-rate",
+            "alert": "PlatformServiceHighErrorRate",
+            "severity": "warning",
+            "category": "platform",
+            "runbook": "Identify service with >2% 5xx; inspect recent deploy and dependency chain.",
+            "deprecated": false
+        },
+        {
+            "id": "traefik-high-gateway-error-rate",
+            "alert": "TraefikHighGatewayErrorRate",
+            "severity": "warning",
+            "category": "platform",
+            "runbook": "Review Traefik logs; check backend saturation and upstream failures.",
+            "deprecated": false
+        },
+        {
+            "id": "platform-rate-limit-burst",
+            "alert": "PlatformRateLimitBurst",
+            "severity": "warning",
+            "category": "platform",
+            "runbook": "Investigate sudden spike of 429s; analyze traffic patterns and abusive clients.",
+            "deprecated": false
+        },
+        {
+            "id": "platform-rate-limit-sustained",
+            "alert": "PlatformRateLimitSustained",
+            "severity": "info",
+            "category": "platform",
+            "runbook": "Sustained 429 responses; adjust limits or scale service tiers.",
+            "deprecated": false
+        },
+        {
+            "id": "internal-p99-latency-high",
+            "alert": "InternalServiceP99LatencyHigh",
+            "severity": "warning",
+            "scope": "internal-sampler",
+            "category": "internal",
+            "runbook": "Check health endpoint upstream latency; analyze resource usage.",
+            "deprecated": false
+        },
+        {
+            "id": "internal-failure-rate-high",
+            "alert": "InternalServiceFailureRateHigh",
+            "severity": "warning",
+            "scope": "internal-sampler",
+            "category": "internal",
+            "runbook": "Review failure logs; confirm endpoint availability and network stability.",
+            "deprecated": false
+        },
+        {
+            "id": "internal-p99-latency-burn-fast",
+            "alert": "InternalServiceP99LatencyBurnFast",
+            "severity": "warning",
+            "scope": "internal-sampler",
+            "category": "internal",
+            "runbook": "Fast p99 spike; compare 5m vs 30m baseline; examine deploys.",
+            "deprecated": false
+        },
+        {
+            "id": "internal-p99-latency-burn-slow",
+            "alert": "InternalServiceP99LatencyBurnSlow",
+            "severity": "info",
+            "scope": "internal-sampler",
+            "category": "internal",
+            "runbook": "Sustained p99 elevation; consider scaling or performance tuning.",
+            "deprecated": false
+        }
+    ]
+}

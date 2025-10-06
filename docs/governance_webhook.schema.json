@@ -1,0 +1,77 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "GovernanceWebhookPayload",
+    "type": "object",
+    "required": [
+        "event",
+        "version",
+        "sha",
+        "semver_status",
+        "stability_ratio",
+        "reasons",
+        "operations"
+    ],
+    "properties": {
+        "event": {
+            "type": "string",
+            "const": "governance_notice"
+        },
+        "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Payload contract version. Increment on backward-incompatible changes to shape or semantics."
+        },
+        "sha": {
+            "type": "string",
+            "minLength": 7,
+            "maxLength": 40
+        },
+        "semver_status": {
+            "type": "string",
+            "enum": [
+                "ok",
+                "warn",
+                "fail",
+                "unknown"
+            ]
+        },
+        "stability_ratio": {
+            "type": "number",
+            "minimum": 0
+        },
+        "reasons": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "semver_fail",
+                    "stability_drop",
+                    "placeholder_streak",
+                    "semver_recovered",
+                    "stability_recovered",
+                    "placeholder_recovered"
+                ]
+            },
+            "uniqueItems": true
+        },
+        "operations": {
+            "type": "object",
+            "required": [
+                "added",
+                "removed"
+            ],
+            "properties": {
+                "added": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "removed": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": true
+}

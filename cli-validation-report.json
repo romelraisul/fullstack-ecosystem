@@ -1,0 +1,169 @@
+{
+  "package_name": "simple-sdk-demo",
+  "version": "1.0.0",
+  "timestamp": "2025-10-03T13:26:07.235182Z",
+  "overall_status": "pass",
+  "results": [
+    {
+      "name": "Required File: README.md",
+      "status": "pass",
+      "message": "README file found",
+      "details": {
+        "file_size": 645
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Required File: LICENSE",
+      "status": "pass",
+      "message": "License file found",
+      "details": {
+        "file_size": 1093
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Required File: setup.py",
+      "status": "pass",
+      "message": "Setup script (Python) found",
+      "details": {
+        "file_size": 915
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Required File: pyproject.toml",
+      "status": "warning",
+      "message": "Project config (Python) not found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Required File: requirements.txt",
+      "status": "pass",
+      "message": "Dependencies (Python) found",
+      "details": {
+        "file_size": 44
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Source Directory",
+      "status": "pass",
+      "message": "Source directory found: src",
+      "details": {
+        "path": "C:\\Users\\romel\\AppData\\Local\\Temp\\sdk_validation_demo_jfgxou2w\\simple-sdk-demo\\src"
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Test Directory",
+      "status": "pass",
+      "message": "Test directory found: tests",
+      "details": {
+        "path": "C:\\Users\\romel\\AppData\\Local\\Temp\\sdk_validation_demo_jfgxou2w\\simple-sdk-demo\\tests",
+        "test_files": 1
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Setup.py Metadata",
+      "status": "pass",
+      "message": "All required metadata present",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Sensitive Files",
+      "status": "pass",
+      "message": "No sensitive files found",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Hardcoded Secrets",
+      "status": "pass",
+      "message": "No hardcoded secrets detected",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Dependency Count",
+      "status": "pass",
+      "message": "Found 2 dependencies to validate",
+      "details": {
+        "count": 2
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Dependency Vulnerabilities",
+      "status": "pass",
+      "message": "No known vulnerabilities found in dependencies",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Changelog File",
+      "status": "warning",
+      "message": "No changelog file found - consider adding CHANGELOG.md",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Semantic Versioning",
+      "status": "pass",
+      "message": "Version follows semantic versioning: 1.0.0",
+      "details": {
+        "version": "1.0.0"
+      },
+      "severity": "info"
+    },
+    {
+      "name": "API Documentation",
+      "status": "warning",
+      "message": "No API documentation files found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "CI/CD Configuration",
+      "status": "pass",
+      "message": "CI/CD configuration found: .github/workflows/*.yml",
+      "details": {
+        "files": [
+          "C:\\Users\\romel\\AppData\\Local\\Temp\\sdk_validation_demo_jfgxou2w\\simple-sdk-demo\\.github\\workflows\\ci.yml"
+        ]
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Build Configuration",
+      "status": "pass",
+      "message": "Build configuration found: Makefile",
+      "details": {
+        "file": "Makefile"
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Test Configuration",
+      "status": "warning",
+      "message": "No test configuration found",
+      "details": null,
+      "severity": "medium"
+    }
+  ],
+  "metadata": {
+    "package_path": "C:\\Users\\romel\\AppData\\Local\\Temp\\sdk_validation_demo_jfgxou2w\\simple-sdk-demo",
+    "validation_config": {},
+    "total_checks": 18,
+    "validator_version": "1.0.0"
+  },
+  "summary": {
+    "pass": 14,
+    "fail": 0,
+    "warning": 4,
+    "skip": 0
+  }
+}

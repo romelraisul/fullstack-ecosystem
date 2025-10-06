@@ -1,0 +1,66 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "validations_index.schema.json",
+    "title": "Observability Validations Index",
+    "type": "object",
+    "required": [
+        "schema_version",
+        "layout",
+        "alerts",
+        "overall_status"
+    ],
+    "properties": {
+        "schema_version": {
+            "type": "integer",
+            "enum": [
+                1
+            ]
+        },
+        "overall_status": {
+            "type": "string",
+            "enum": [
+                "pass",
+                "fail"
+            ]
+        },
+        "layout": {
+            "type": "object",
+            "required": [
+                "exit_code",
+                "report"
+            ],
+            "properties": {
+                "exit_code": {
+                    "type": "integer"
+                },
+                "report": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "additionalProperties": true
+        },
+        "alerts": {
+            "type": "object",
+            "required": [
+                "exit_code",
+                "report"
+            ],
+            "properties": {
+                "exit_code": {
+                    "type": "integer"
+                },
+                "report": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "additionalProperties": true
+        }
+    },
+    "additionalProperties": true
+}

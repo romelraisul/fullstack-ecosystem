@@ -1,0 +1,30 @@
+{"alert": "HighLatencyP95", "category": "latency", "for": "10m", "group": "api-health", "scope": "service", "severity": "warning", "slo": null, "windows": ["5m eval", "10m hold"]}
+{"alert": "LowSuccessRatio", "category": "error-rate", "for": "10m", "group": "api-health", "scope": "service", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "NoExperimentsIn1h", "category": "throughput", "for": "", "group": "bridge-health", "scope": "system", "severity": "info", "slo": null, "windows": ["1h"]}
+{"alert": "HighRejectedShare", "category": "quality", "for": "15m", "group": "bridge-health", "scope": "system", "severity": "warning", "slo": null, "windows": ["15m"]}
+{"alert": "UltraHighLatencyP95", "category": "latency", "for": "10m", "group": "ultra-services", "scope": "multi-service", "severity": "warning", "slo": null, "windows": ["5m eval", "10m hold"]}
+{"alert": "UltraErrorRateHigh", "category": "error-rate", "for": "10m", "group": "ultra-services", "scope": "multi-service", "severity": "warning", "slo": null, "windows": ["5m eval", "10m hold"]}
+{"alert": "QCAEGuardrailViolations", "category": "guardrail", "for": "5m", "group": "quantum-guardrails", "scope": "service", "severity": "warning", "slo": null, "windows": ["5m"]}
+{"alert": "QCAEQuantumJobsP99High", "category": "latency", "for": "10m", "group": "quantum-guardrails", "scope": "service", "severity": "warning", "slo": null, "windows": ["5m eval", "10m hold"]}
+{"alert": "QCAEQuantumJobsP99HighByKind", "category": "latency", "for": "10m", "group": "quantum-guardrails", "scope": "dimension", "severity": "warning", "slo": null, "windows": ["5m eval", "10m hold"]}
+{"alert": "QCAEInstanceDown", "category": "availability", "for": "5m", "group": "quantum-health", "scope": "service", "severity": "critical", "slo": null, "windows": ["5m"]}
+{"alert": "QDCInstanceDown", "category": "availability", "for": "5m", "group": "quantum-health", "scope": "service", "severity": "warning", "slo": null, "windows": ["5m"]}
+{"alert": "QCMSInstanceDown", "category": "availability", "for": "5m", "group": "quantum-health", "scope": "service", "severity": "warning", "slo": null, "windows": ["5m"]}
+{"alert": "OrchestrateQuantumP95High", "category": "latency", "for": "10m", "group": "quantum-health", "scope": "route", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "NoQuantumJobsIn10m", "category": "throughput", "for": "0m", "group": "quantum-health", "scope": "service", "severity": "info", "slo": null, "windows": ["10m"]}
+{"alert": "AgentTargetDown", "category": "availability", "for": "2m", "group": "agents-health", "scope": "agent", "severity": "critical", "slo": null, "windows": ["2m"]}
+{"alert": "AcademicAgentNoRequests10m", "category": "throughput", "for": "0m", "group": "agents-health", "scope": "agent", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "DeveloperEcosystemAgentNoRequests10m", "category": "throughput", "for": "0m", "group": "agents-health", "scope": "agent", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "WebSecurityAgentNoRequests10m", "category": "throughput", "for": "0m", "group": "agents-health", "scope": "agent", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "TopicsDiscoveryAgentNoRequests10m", "category": "throughput", "for": "0m", "group": "agents-health", "scope": "agent", "severity": "warning", "slo": null, "windows": ["10m"]}
+{"alert": "AgentP95LatencyHigh", "category": "latency", "for": "5m", "group": "agents-slo-latency", "scope": "agent", "severity": "warning", "slo": "latency", "windows": ["5m"]}
+{"alert": "AgentP95LatencyCritical", "category": "latency", "for": "10m", "group": "agents-slo-latency", "scope": "agent", "severity": "critical", "slo": "latency", "windows": ["10m"]}
+{"alert": "AgentLatencyBurnFast", "category": "latency-acceleration", "for": "5m", "group": "agents-slo-burn", "scope": "agent", "severity": "warning", "slo": "latency-burn", "windows": ["5m vs 30m"]}
+{"alert": "AgentErrorRateHigh", "category": "error-rate", "for": "10m", "group": "agents-slo-error", "scope": "agent", "severity": "warning", "slo": "error-rate", "windows": ["5m", "10m"]}
+{"alert": "AgentErrorRateCritical", "category": "error-rate", "for": "5m", "group": "agents-slo-error", "scope": "agent", "severity": "critical", "slo": "error-rate", "windows": ["5m"]}
+{"alert": "AgentErrorBurnFast", "category": "error-acceleration", "for": "5m", "group": "agents-slo-error", "scope": "agent", "severity": "warning", "slo": "error-burn", "windows": ["5m vs 30m"]}
+{"alert": "AgentFleetErrorRateHigh", "category": "error-rate", "for": "10m", "group": "agents-slo-error", "scope": "fleet", "severity": "critical", "slo": "error-rate", "windows": ["5m", "10m"]}
+{"alert": "AgentErrorBudgetBurnFast", "category": "error-budget-burn", "for": "5m", "group": "agents-slo-error-burn-multiwindow", "scope": "agent", "severity": "critical", "slo": "error-burn-fast", "windows": ["5m", "1h"]}
+{"alert": "AgentErrorBudgetBurnSlow", "category": "error-budget-burn", "for": "30m", "group": "agents-slo-error-burn-multiwindow", "scope": "agent", "severity": "warning", "slo": "error-burn-slow", "windows": ["30m", "6h"]}
+{"alert": "AgentFleetErrorBudgetBurnFast", "category": "error-budget-burn", "for": "5m", "group": "agents-slo-error-burn-multiwindow", "scope": "fleet", "severity": "critical", "slo": "error-burn-fast", "windows": ["5m", "1h"]}
+{"alert": "AgentFleetErrorBudgetBurnSlow", "category": "error-budget-burn", "for": "30m", "group": "agents-slo-error-burn-multiwindow", "scope": "fleet", "severity": "warning", "slo": "error-burn-slow", "windows": ["30m", "6h"]}

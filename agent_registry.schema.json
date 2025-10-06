@@ -1,0 +1,68 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://example.com/agent-registry.schema.json",
+    "title": "Agent Registry",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": [
+            "name",
+            "host",
+            "health_path"
+        ],
+        "additionalProperties": true,
+        "properties": {
+            "name": {
+                "type": "string",
+                "minLength": 1
+            },
+            "host": {
+                "type": "string",
+                "minLength": 1
+            },
+            "health_path": {
+                "type": "string",
+                "minLength": 1
+            },
+            "disabled": {
+                "type": [
+                    "boolean",
+                    "string"
+                ],
+                "enum": [
+                    true,
+                    false,
+                    "true",
+                    "false",
+                    "1",
+                    "0"
+                ]
+            },
+            "latency_p95_warning_seconds": {
+                "type": [
+                    "number",
+                    "integer"
+                ],
+                "minimum": 0
+            },
+            "latency_p95_critical_seconds": {
+                "type": [
+                    "number",
+                    "integer"
+                ],
+                "minimum": 0
+            },
+            "error_budget_fraction": {
+                "type": [
+                    "number",
+                    "integer"
+                ],
+                "minimum": 0,
+                "maximum": 1
+            },
+            "seed_endpoint": {
+                "type": "string"
+            }
+        }
+    }
+}

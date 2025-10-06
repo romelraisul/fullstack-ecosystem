@@ -1,8 +1,12 @@
 from __future__ import annotations
-import sqlite3
+
 import json
+import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+
+from ..utils.resilience import retry_database_operation, with_metrics
 
 DB_PATH = Path("governance-app-data.sqlite")
 
@@ -28,16 +32,27 @@ CREATE TABLE IF NOT EXISTS findings (
 );
 """
 
+
+@retry_database_operation(max_attempts=3, base_delay=0.5)
+@with_metrics("database_connection")
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout = 30000")  # 30 second timeout for busy database
     return conn
 
+
+@retry_database_operation(max_attempts=3, base_delay=1.0)
+@with_metrics("database_init")
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
 
 
-def record_run(repo: str, branch: str, workflows_scanned: int, findings: list[dict[str, Any]]) -> int:
+@retry_database_operation(max_attempts=3, base_delay=0.5)
+@with_metrics("database_record_run")
+def record_run(
+    repo: str, branch: str, workflows_scanned: int, findings: list[dict[str, Any]]
+) -> int:
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -63,7 +78,9 @@ def record_run(repo: str, branch: str, workflows_scanned: int, findings: list[di
         return run_id
 
 
-def recent_runs(limit: int = 20, offset: int = 0, repo: str | None = None, branch: str | None = None) -> Iterable[dict[str, Any]]:
+def recent_runs(
+    limit: int = 20, offset: int = 0, repo: str | None = None, branch: str | None = None
+) -> Iterable[dict[str, Any]]:
     clauses = []
     params: list[Any] = []
     if repo:
@@ -84,7 +101,14 @@ def recent_runs(limit: int = 20, offset: int = 0, repo: str | None = None, branc
         cur.execute(query, params)
         rows = cur.fetchall()
         for row in rows:
-            yield {"id": row[0], "ts": row[1], "repo": row[2], "branch": row[3], "workflows_scanned": row[4], "findings_count": row[5]}
+            yield {
+                "id": row[0],
+                "ts": row[1],
+                "repo": row[2],
+                "branch": row[3],
+                "workflows_scanned": row[4],
+                "findings_count": row[5],
+            }
 
 
 def list_findings(
@@ -135,3 +159,57 @@ def list_findings(
                 "internal": bool(row[6]),
                 "raw": json.loads(row[7]) if row[7] else None,
             }
+
+
+def aggregate_stats():
+    """Return lightweight aggregated stats.
+
+    - total_runs
+    - total_findings
+    - repos: list of {repo, runs, findings}
+    - actions: list of {action, occurrences, unpinned, pinned}
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        # Totals
+        cur.execute("SELECT COUNT(*), COALESCE(SUM(findings_count),0) FROM runs")
+        row = cur.fetchone()
+        total_runs = row[0]
+        total_findings = row[1]
+
+        cur.execute(
+            """
+            SELECT repo, COUNT(* ) as runs, COALESCE(SUM(findings_count),0) as findings
+            FROM runs GROUP BY repo ORDER BY findings DESC LIMIT 50
+            """
+        )
+        repos = [{"repo": r[0], "runs": r[1], "findings": r[2]} for r in cur.fetchall()]
+
+        cur.execute(
+            """
+            SELECT action,
+                   COUNT(*) as occurrences,
+                   SUM(CASE WHEN pinned = 0 THEN 1 ELSE 0 END) as unpinned,
+                   SUM(CASE WHEN pinned = 1 THEN 1 ELSE 0 END) as pinned
+            FROM findings
+            GROUP BY action
+            ORDER BY occurrences DESC
+            LIMIT 100
+            """
+        )
+        actions = [
+            {
+                "action": r[0],
+                "occurrences": r[1],
+                "unpinned": r[2],
+                "pinned": r[3],
+            }
+            for r in cur.fetchall()
+        ]
+
+    return {
+        "total_runs": total_runs,
+        "total_findings": total_findings,
+        "repos": repos,
+        "actions": actions,
+    }

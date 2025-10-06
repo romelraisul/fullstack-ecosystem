@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Systems Registry</title>
+    <style>
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 20px;
+        }
+
+        .muted {
+            color: #666;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 12px 0;
+        }
+
+        input,
+        select,
+        button {
+            font-size: 13px;
+            padding: 6px 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            border-bottom: 1px solid #eee;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #fafafa;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+
+        .maturity-verified {
+            background: #d8f5dc;
+            color: #0f5132;
+        }
+
+        .maturity-experimental {
+            background: #fff3cd;
+            color: #664d03;
+        }
+
+        .maturity-inferred {
+            background: #e2e3e5;
+            color: #41464b;
+        }
+
+        .nowrap {
+            white-space: nowrap;
+        }
+
+        .link {
+            display: inline-block;
+            margin: 2px 6px 2px 0;
+            text-decoration: none;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid #888;
+        }
+
+        .small {
+            font-size: 12px;
+            color: #777;
+        }
+
+        .right {
+            float: right;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+        }
+
+        .dot.up {
+            background: #2ecc71;
+        }
+
+        .dot.down {
+            background: #e74c3c;
+        }
+
+        .dot.unknown {
+            background: #bdc3c7;
+        }
+
+        .error {
+            color: #b91c1c;
+        }
+
+        .graph-block {
+            margin: 12px 0;
+        }
+
+        .graph-note {
+            margin: 6px 0 4px;
+        }
+
+        .graph-canvas {
+            max-width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        .summary-bar {
+            gap: 12px;
+        }
+
+        .latest-results {
+            margin: 12px 0 4px;
+            padding: 8px 10px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            background: #fafafa;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-block;
+            border: 1px solid #ccc;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 12px;
+            background: #fff;
+        }
+
+        .dim {
+            color: #666;
+        }
+
+        /* Modal overlay */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal {
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+            max-width: 780px;
+            width: calc(100% - 40px);
+            max-height: 80vh;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal header {
+            padding: 10px 14px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+        }
+
+        .modal .body {
+            padding: 12px 14px;
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12px;
+        }
+
+        .modal footer {
+            padding: 10px 14px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+    </style>
+    <link rel="icon" href="data:,">
+    <script>
+        async function fetchJSON(url, opts) {
+            const res = await fetch(url, Object.assign({ cache: 'no-store' }, opts || {}));
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return await res.json();
+        }
+        function showModal(title, contentHtml) {
+            const ov = document.getElementById('modalOverlay');
+            const t = document.getElementById('modalTitle');
+            const b = document.getElementById('modalBody');
+            t.textContent = title;
+            b.innerHTML = contentHtml;
+            ov.style.display = 'flex';
+        }
+        function hideModal() {
+            const ov = document.getElementById('modalOverlay');
+            ov.style.display = 'none';
+        }
+        function $id(id) { return document.getElementById(id); }
+        function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+        function maturityBadge(m) {
+            const cls = m === 'verified' ? 'maturity-verified' : (m === 'experimental' ? 'maturity-experimental' : 'maturity-inferred');
+            return `<span class="badge ${cls}">${esc(m || 'inferred')}</span>`;
+        }
+        function gatewayUrlForApiBase(apiBase) {
+            if (!apiBase) return '';
+            const s = String(apiBase).trim();
+            if (!s) return '';
+            if (s.startsWith('http://') || s.startsWith('https://')) return s; // absolute
+            // relative to gateway root; already proxied for known services (/api, /qcc, /qcms, /qdc, /qindex, /qcae)
+            return s;
+        }
+        async function runExecute(slug, btn) {
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Executing…';
+            try {
+                const res = await fetch(`/api/system/${encodeURIComponent(slug)}/execute`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: 'system.execute.sanity' })
+                });
+                btn.textContent = res.ok ? 'Done' : 'Error';
+            } catch { btn.textContent = 'Error'; }
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1200);
+        }
+        async function runBell(btn) {
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Running Bell…';
+            try {
+                const res = await fetch('/api/orchestrate/quantum', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shots: 128 }) });
+                const ok = res.ok;
+                let msg = ok ? 'Done' : 'Error';
+                if (ok) {
+                    const data = await res.json();
+                    const top = (data && data.result && data.result.top_counts) ? data.result.top_counts : [];
+                    const dur = data && data.duration_ms;
+                    msg = `Done (${dur} ms: ${top.map(p => p[0] + " " + p[1]).join(', ')})`;
+                }
+                btn.textContent = msg;
+            } catch (_) { btn.textContent = 'Error'; }
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+        }
+        function applyFilter(rows, q, maturity) {
+            q = (q || '').toLowerCase();
+            for (const r of rows) {
+                const m = r.dataset.maturity || '';
+                const txt = r.dataset.search || '';
+                const show = (maturity === '' || m === maturity) && (q === '' || txt.includes(q));
+                r.style.display = show ? '' : 'none';
+            }
+        }
+        async function reloadInventory(btn) {
+            if (btn) { btn.disabled = true; const o = btn.textContent; btn.textContent = 'Reloading…'; }
+            try {
+                const res = await fetch('/api/admin/reload-inventory', { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+            } catch (e) {
+                alert('Reload failed: ' + (e && e.message ? e.message : 'error'));
+            } finally {
+                if (btn) { btn.textContent = 'Reload Inventory'; btn.disabled = false; }
+                location.reload();
+            }
+        }
+        function timeAgoFromTs(tsSec) {
+            const s = Math.max(0, Math.floor(Date.now() / 1000 - Number(tsSec || 0)));
+            if (s < 60) return `${s}s ago`;
+            const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+            const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+            const d = Math.floor(h / 24); return `${d}d ago`;
+        }
+        async function refreshLatest() {
+            try {
+                const res = await fetch('/api/events/recent?limit=100', { cache: 'no-store' });
+                if (!res.ok) return;
+                const items = await res.json();
+                const lastDelegate = items.find(e => e.event === 'orchestrator.delegate.completed');
+                const lastExperiment = items.find(e => e.event === 'orchestrator.experiment.completed');
+                const el = document.getElementById('latestResults');
+                if (!el) return;
+                const parts = [];
+                if (lastDelegate) {
+                    const t = timeAgoFromTs(lastDelegate.ts);
+                    const ok = lastDelegate.ok ?? lastDelegate.total; // ok count may be in payload
+                    const total = lastDelegate.total ?? '-';
+                    parts.push(`<span class=\"pill\">Delegate: <strong>${ok ?? '-'}/${total}</strong> <span class=\"dim\">${t}</span></span>`);
+                } else {
+                    parts.push(`<span class=\"pill\">Delegate: <span class=\"dim\">—</span></span>`);
+                }
+                if (lastExperiment) {
+                    const t = timeAgoFromTs(lastExperiment.ts);
+                    const ok = lastExperiment.ok ?? '-';
+                    const total = lastExperiment.total ?? '-';
+                    parts.push(`<span class=\"pill\">Experiment: <strong>${ok}/${total}</strong> <span class=\"dim\">${t}</span></span>`);
+                } else {
+                    parts.push(`<span class=\"pill\">Experiment: <span class=\"dim\">—</span></span>`);
+                }
+                el.innerHTML = parts.join(' ');
+            } catch { }
+        }
+        async function forceExperimental(btn) {
+            const confirmMsg = 'Force all systems to experimental? This updates in-memory maturity and dashboards.';
+            if (!confirm(confirmMsg)) return;
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Forcing…';
+            try {
+                const res = await fetch('/api/admin/force-experimental', { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                btn.textContent = 'Done';
+            } catch (e) {
+                alert('Force failed: ' + (e && e.message ? e.message : 'error'));
+                btn.textContent = 'Error';
+            } finally {
+                setTimeout(() => { btn.textContent = orig; btn.disabled = false; location.reload(); }, 800);
+            }
+        }
+        async function runFullExperiment(btn) {
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Running…';
+            try {
+                const res = await fetch('/api/orchestrate/full-experiment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const ok = res.ok;
+                let body = null;
+                try { body = await res.json(); } catch { }
+                const summary = body ? `
+                    <div><strong>Status:</strong> ${ok ? 'ok' : 'error'}</div>
+                    <div><strong>Total:</strong> ${body.total ?? '—'} | <strong>OK:</strong> ${body.ok ?? '—'} | <strong>Errors:</strong> ${body.errors ?? '—'}</div>
+                    <div><strong>Duration:</strong> ${body.duration_ms ?? '—'} ms</div>
+                    <pre>${esc(JSON.stringify(body, null, 2))}</pre>
+                ` : `<div>HTTP ${res.status}</div>`;
+                showModal('Full Experiment Result', summary);
+                btn.textContent = ok ? 'Done' : 'Error';
+            } catch (_) { btn.textContent = 'Error'; }
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+        }
+        async function delegateAll(btn) {
+            const event = prompt('Event name to delegate to all agents?', 'system.execute.delegated');
+            if (!event) return;
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Delegating…';
+            try {
+                const res = await fetch('/api/orchestrate/delegate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event, include_experimental: true })
+                });
+                const ok = res.ok;
+                let body = null;
+                try { body = await res.json(); } catch { }
+                const summary = body ? `
+                    <div><strong>Status:</strong> ${ok ? 'ok' : 'error'}</div>
+                    <div><strong>Total:</strong> ${body.total ?? '—'} | <strong>OK:</strong> ${body.ok ?? '—'} | <strong>Errors:</strong> ${body.errors ?? '—'}</div>
+                    <div><strong>Event:</strong> ${esc(body.event ?? event)}</div>
+                    <div><strong>Duration:</strong> ${body.duration_ms ?? '—'} ms</div>
+                    <pre>${esc(JSON.stringify(body, null, 2))}</pre>
+                ` : `<div>HTTP ${res.status}</div>`;
+                showModal('Delegate Task Result', summary);
+                btn.textContent = ok ? 'Done' : 'Error';
+            } catch (_) { btn.textContent = 'Error'; }
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+        }
+
+        async function delegateEnterprise(btn) {
+            const event = prompt('Event name for enterprise summary?', 'enterprise.summary.delegated');
+            if (event === null) return;
+            let compute = prompt('Compute mode: light or experiment?', 'light');
+            compute = (compute || 'light').toLowerCase();
+            if (!['light', 'experiment'].includes(compute)) compute = 'light';
+            const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Delegating…';
+            let body = null; let ok = false; let res = null;
+            try {
+                res = await fetch('/api/orchestrate/delegate-enterprise', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event, compute, include_experimental: true })
+                });
+                ok = res.ok; try { body = await res.json(); } catch { body = null; }
+            } catch { }
+            const summary = body ? `
+                <div><strong>Status:</strong> ${ok ? 'ok' : 'error'}</div>
+                <div><strong>Total:</strong> ${body.total ?? '—'} | <strong>OK:</strong> ${body.ok ?? '—'} | <strong>Errors:</strong> ${body.errors ?? '—'}</div>
+                <div><strong>Event:</strong> ${esc(body.event ?? event)}</div>
+                <div><strong>Compute:</strong> ${esc(body.compute_mode ?? compute)}</div>
+                <div><strong>Duration:</strong> ${body.duration_ms ?? '—'} ms</div>
+                <pre>${esc(JSON.stringify(body.enterprise ?? body, null, 2))}</pre>
+            ` : `<div>HTTP ${res ? res.status : 'error'}</div>`;
+            showModal('Enterprise Summary Delegation', summary);
+            btn.textContent = ok ? 'Done' : 'Error';
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+        }
+        function colorForCategory(cat) {
+            const map = { quantum: '#8e44ad', infrastructure: '#2c3e50', strategy: '#16a085', finance: '#d35400', ai: '#2980b9', compliance: '#7f8c8d' };
+            return map[cat] || '#555';
+        }
+        function runGraph(graph) {
+            const canvas = document.getElementById('graphCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const nodes = (graph.nodes || []).map(n => ({ ...n, x: Math.random() * canvas.width, y: Math.random() * canvas.height, vx: 0, vy: 0 }));
+            const edges = graph.edges || [];
+            function step() {
+                // springs
+                for (const e of edges) {
+                    const a = nodes.find(n => n.id === e.from); const b = nodes.find(n => n.id === e.to);
+                    if (!a || !b) continue; const dx = b.x - a.x; const dy = b.y - a.y; const dist = Math.max(20, Math.sqrt(dx * dx + dy * dy));
+                    const k = 0.0008; const fx = dx * k * (dist); const fy = dy * k * (dist);
+                    a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+                }
+                // repulsion
+                for (let i = 0; i < nodes.length; i++) {
+                    for (let j = i + 1; j < nodes.length; j++) {
+                        const a = nodes[i], b = nodes[j]; const dx = b.x - a.x; const dy = b.y - a.y; const d2 = dx * dx + dy * dy; if (d2 < 1) continue; const rep = 80 / d2; a.vx -= dx * rep; a.vy -= dy * rep; b.vx += dx * rep; b.vy += dy * rep;
+                    }
+                }
+                nodes.forEach(n => { n.vx *= 0.85; n.vy *= 0.85; n.x += n.vx; n.y += n.vy; n.x = Math.max(20, Math.min(canvas.width - 20, n.x)); n.y = Math.max(20, Math.min(canvas.height - 20, n.y)); });
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.font = '11px system-ui'; ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+                for (const e of edges) { const a = nodes.find(n => n.id === e.from); const b = nodes.find(n => n.id === e.to); if (!a || !b) continue; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+                for (const n of nodes) { ctx.beginPath(); ctx.fillStyle = colorForCategory(n.category); ctx.arc(n.x, n.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#111'; ctx.fillText(n.id, n.x + 10, n.y + 4); }
+                requestAnimationFrame(step);
+            }
+            step();
+        }
+
+        async function init() {
+            const tableBody = $id('tbody');
+            const countEl = $id('count');
+            const summaryEl = $id('summary');
+            try {
+                const [systems, summary] = await Promise.all([
+                    fetchJSON('/api/systems'),
+                    fetchJSON('/api/systems/integration-summary')
+                ]);
+                countEl.textContent = Array.isArray(systems) ? systems.length : 0;
+                // Render maturity summary and last reload time (live-updating)
+                if (summary && summary.by_maturity) {
+                    const bm = summary.by_maturity;
+                    const last = summary.last_reload_at ? new Date(summary.last_reload_at) : null;
+                    const lastTxt = last ? `${last.toLocaleDateString()} ${last.toLocaleTimeString()}` : '—';
+                    const total = Number(summary.total || 0);
+                    const withHealth = Number(summary.with_health || 0);
+                    const readinessPct = total > 0 ? Math.round((withHealth / total) * 1000) / 10 : 0;
+                    const readinessClass = readinessPct >= 95 ? 'maturity-verified' : (readinessPct >= 80 ? 'maturity-experimental' : 'maturity-inferred');
+                    summaryEl.innerHTML = `
+                        <span class="badge maturity-verified" title="Verified">✔ Verified: ${bm.verified ?? 0}</span>
+                        <span class="badge maturity-experimental" title="Experimental">⚠ Experimental: ${bm.experimental ?? 0}</span>
+                        <span class="badge maturity-inferred" title="Inferred">ℹ Inferred: ${bm.inferred ?? 0}</span>
+                        <span class="badge ${readinessClass}" title="with_health / total">Readiness: ${readinessPct}%</span>
+                        <span class="small muted">Last reload: <span id="lastAgo" title="${esc(lastTxt)}"></span></span>
+                    `;
+                    if (last) {
+                        const agoEl = document.getElementById('lastAgo');
+                        const timeAgo = (d) => {
+                            const s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+                            if (s < 60) return `${s}s ago`;
+                            const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+                            const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+                            const days = Math.floor(h / 24); return `${days}d ago`;
+                        };
+                        const tick = () => { if (agoEl) agoEl.textContent = timeAgo(last); };
+                        tick();
+                        setInterval(tick, 1000);
+                    }
+                }
+                const rows = [];
+                const healthMap = {}; // slug -> bool|null
+                // Prefill health map to unknown
+                for (const s of (systems || [])) { healthMap[s.slug] = null; }
+                // After first render, probe /health for each api_base (best-effort)
+                (async () => {
+                    await Promise.all((systems || []).map(async (s) => {
+                        const base = (s.api_base || '').trim();
+                        if (!base) { healthMap[s.slug] = null; return; }
+                        let url = base.endsWith('/health') ? base : (base.replace(/\/$/, '') + '/health');
+                        try { const res = await fetch(url, { cache: 'no-store' }); healthMap[s.slug] = res.ok; }
+                        catch { healthMap[s.slug] = false; }
+                        const cell = document.querySelector(`[data-slug="${s.slug}"] .health-cell`);
+                        if (cell) {
+                            const st = healthMap[s.slug];
+                            const cls = st === true ? 'up' : (st === false ? 'down' : 'unknown');
+                            cell.innerHTML = `<span class="dot ${cls}" title="${st === true ? 'Healthy' : st === false ? 'Unhealthy' : 'Unknown'}"></span>`;
+                        }
+                    }));
+                })();
+                for (const s of (systems || [])) {
+                    const slug = s.slug || s.name || 'system';
+                    const name = s.name || slug;
+                    const mat = s.maturity || 'inferred';
+                    const cat = s.category || 'uncategorized';
+                    const apiBase = (s.api_base || '').trim();
+                    const gw = gatewayUrlForApiBase(apiBase);
+                    const apiLinks = [
+                        `<a class="link" href="/api/system/${encodeURIComponent(slug)}/capabilities" target="_blank" rel="noopener">Capabilities</a>`,
+                        `<button class="link" onclick="runExecute('${esc(slug)}', this)">Execute</button>`
+                    ];
+                    // Global Bell action only once on top row, but safe to render on all
+                    if (slug === 'qcae') {
+                        apiLinks.push(`<button class="link" onclick="runBell(this)">Run Bell</button>`);
+                    }
+                    if (gw) {
+                        const label = gw.startsWith('http') ? 'Open API (abs)' : `Open ${gw}`;
+                        const href = gw;
+                        apiLinks.unshift(`<a class="link" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`);
+                    }
+                    const tr = document.createElement('tr');
+                    tr.dataset.slug = slug;
+                    tr.dataset.maturity = mat;
+                    tr.dataset.search = `${name} ${slug} ${cat} ${mat} ${apiBase}`.toLowerCase();
+                    tr.innerHTML = `
+            <td class="nowrap"><strong>${esc(name)}</strong><div class="small muted">${esc(slug)}</div></td>
+            <td>${esc(cat)}</td>
+            <td>${maturityBadge(mat)}</td>
+            <td class="health-cell"><span class="dot unknown" title="Unknown"></span></td>
+            <td>${apiBase ? esc(apiBase) : '<span class="muted">—</span>'}</td>
+            <td>${apiLinks.join(' ')}</td>
+          `;
+                    tableBody.appendChild(tr);
+                    rows.push(tr);
+                }
+                const qEl = $id('q'); const mSel = $id('maturity');
+                function onChange() { applyFilter(rows, qEl.value, mSel.value); }
+                qEl.addEventListener('input', onChange);
+                mSel.addEventListener('change', onChange);
+                onChange();
+                // Latest results widget polling
+                await refreshLatest();
+                setInterval(refreshLatest, 5000);
+                // Load graph (best-effort)
+                try {
+                    const gRes = await fetch('/api/systems/graph', { cache: 'no-store' });
+                    if (gRes.ok) {
+                        const graph = await gRes.json();
+                        runGraph(graph);
+                    }
+                } catch (_) { }
+            } catch (e) {
+                $id('error').textContent = 'Failed to load systems (' + (e && e.message ? e.message : 'error') + ')';
+            }
+        }
+        addEventListener('DOMContentLoaded', init);
+    </script>
+</head>
+
+<body>
+    <header>
+        <h1>Systems Registry <span class="small muted">(<span id="count">0</span>)</span>
+            <a class="link right" href="/">Gateway Home</a>
+        </h1>
+        <div id="summary" class="toolbar summary-bar"></div>
+        <div class="small muted" aria-label="Readiness legend">
+            Readiness legend:
+            <span class="badge maturity-verified" title=">= 95%">≥95%</span>
+            <span class="badge maturity-experimental" title=">= 80% and < 95%">80–95%</span>
+            <span class="badge maturity-inferred" title="< 80%">&lt;80%</span>
+        </div>
+        <div id="error" class="small error"></div>
+        <div class="toolbar">
+            <input id="q" type="search" placeholder="Filter by name, slug, category…" />
+            <label>
+                Maturity
+                <select id="maturity">
+                    <option value="">All</option>
+                    <option value="verified">Verified</option>
+                    <option value="experimental">Experimental</option>
+                    <option value="inferred">Inferred</option>
+                </select>
+            </label>
+            <button id="reloadBtn" class="right" onclick="reloadInventory(this)">Reload Inventory</button>
+            <button id="forceBtn" class="right" onclick="forceExperimental(this)">Force Experimental</button>
+            <button id="fullBtn" class="right" onclick="runFullExperiment(this)">Run Full Experiment</button>
+            <button id="delegateEnterpriseBtn" class="right" onclick="delegateEnterprise(this)">Delegate Enterprise
+                Summary</button>
+            <button id="delegateBtn" class="right" onclick="delegateAll(this)">Delegate Task to All</button>
+        </div>
+    </header>
+    <main>
+        <div class="latest-results" id="latestResults" aria-live="polite">
+            <span class="dim">Loading latest results…</span>
+        </div>
+        <div id="modalOverlay" class="modal-overlay" onclick="if(event.target.id==='modalOverlay') hideModal()">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+                <header>
+                    <span id="modalTitle">Result</span>
+                </header>
+                <div class="body" id="modalBody"></div>
+                <footer>
+                    <button onclick="hideModal()">Close</button>
+                </footer>
+            </div>
+        </div>
+        <details class="graph-block">
+            <summary>Dependency Graph (preview)</summary>
+            <div class="small graph-note">Lightweight force layout of a subset of systems (static graph).</div>
+            <canvas id="graphCanvas" class="graph-canvas" width="1000" height="520"></canvas>
+        </details>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Maturity</th>
+                    <th>Health</th>
+                    <th>api_base</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+        <p class="small muted">Notes: “Open API” follows the system’s api_base. For relative paths (e.g., /api, /qcae,
+            /qcc), the gateway proxies them. For absolute URLs, a new tab opens and may not be proxied. “Capabilities”
+            and “Execute” always go through the orchestrator under /api. Readiness = with_health / total.</p>
+    </main>
+</body>
+
+</html>

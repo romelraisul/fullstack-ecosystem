@@ -1,0 +1,60 @@
+{
+    "events": [
+        {
+            "name": "orchestrator.heartbeat",
+            "description": "Periodic signal from orchestrator/governance plane."
+        },
+        {
+            "name": "orchestrator.plan.update",
+            "description": "Updated rollout/activation plan available."
+        },
+        {
+            "name": "governance.policy.update",
+            "description": "Policy change affecting system behavior."
+        },
+        {
+            "name": "strategy.market.update",
+            "description": "New adjacent market or priority update."
+        },
+        {
+            "name": "strategy.moat.update",
+            "description": "Competitive advantage update issued."
+        },
+        {
+            "name": "finance.exit.update",
+            "description": "Change in exit/IPO readiness signals."
+        },
+        {
+            "name": "finance.ipo.progress",
+            "description": "IPO process milestone achieved."
+        },
+        {
+            "name": "quantum.job.submit",
+            "description": "Quantum job submitted for execution."
+        },
+        {
+            "name": "quantum.job.completed",
+            "description": "Quantum job completed with results."
+        },
+        {
+            "name": "quantum.control.update",
+            "description": "Control layer updated."
+        },
+        {
+            "name": "quantum.circuit.create",
+            "description": "New circuit created."
+        },
+        {
+            "name": "quantum.circuit.updated",
+            "description": "Circuit updated."
+        },
+        {
+            "name": "quantum.data.indexed",
+            "description": "Data indexed into QDC/QIndex."
+        },
+        {
+            "name": "quantum.index.updated",
+            "description": "Index refreshed with new entries."
+        }
+    ]
+}

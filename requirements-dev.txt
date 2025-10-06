@@ -1,0 +1,5 @@
+pytest>=8.2.0
+pyyaml>=6.0.0
+markdown-it-py>=3.0.0
+jsonschema>=4.22.0
+mypy>=1.11,<1.12

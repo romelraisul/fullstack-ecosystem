@@ -1,0 +1,185 @@
+name: Security Verify
+
+on:
+    workflow_call:
+        inputs:
+            expected_digest:
+                type: string
+                required: false
+                description: Expected effective digest (preferred underscore)
+            sbom_digest:
+                type: string
+                required: false
+                description: Original SBOM digest (preferred underscore)
+            verify_signatures:
+                type: boolean
+                required: false
+                default: false
+                description: If true, attempt cosign verify of manifest (preferred underscore)
+        outputs:
+            verify_status:
+                description: Verification status
+                value: ${{ jobs.verify.outputs.status }}
+            digest_match:
+                description: Whether expected and recalculated digests match (true|false|unknown)
+                value: ${{ jobs.verify.outputs.digest_match }}
+            signature_verified:
+                description: Signature verified (true|false|skipped)
+                value: ${{ jobs.verify.outputs.signature_verified }}
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        outputs:
+            status: ${{ steps.integrity.outputs.status }}
+            digest_match: ${{ steps.integrity.outputs.match }}
+            signature_verified: ${{ steps.sigcheck.outputs.signature_verified || 'skipped' }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Compatibility notice
+              run: |
+                  echo "Removed hyphenated inputs (expected-digest,sbom-digest,verify-signatures) and outputs (verify-status,digest-match,signature-verified). Use underscore forms only." >&2
+
+            - name: Download security manifest & signatures (optional)
+              uses: actions/download-artifact@v4
+              with:
+                  name: security-manifest
+                  path: manifest
+              continue-on-error: true
+
+            - name: Download manifest signature bundle (optional)
+              uses: actions/download-artifact@v4
+              with:
+                  name: manifest-signature
+                  path: manifest
+              continue-on-error: true
+
+            - name: Download manifest attestation bundle (optional)
+              uses: actions/download-artifact@v4
+              with:
+                  name: manifest-attestation-bundle
+                  path: manifest
+              continue-on-error: true
+
+            - name: Download SBOM provenance (optional)
+              uses: actions/download-artifact@v4
+              with:
+                  name: sbom-provenance
+                  path: sbom
+              continue-on-error: true
+
+            - name: Compute SBOM digest
+              id: sbomhash
+              shell: bash
+              run: |
+                  set -e
+                  if [ -f sbom/sbom.cdx.json ]; then
+                    if command -v sha256sum >/dev/null 2>&1; then
+                      dg=$(sha256sum sbom/sbom.cdx.json | awk '{print $1}')
+                    else
+                      dg=$(shasum -a 256 sbom/sbom.cdx.json | awk '{print $1}')
+                    fi
+                    echo "sbom_digest=$dg" >> $GITHUB_OUTPUT
+                  else
+                    echo "sbom_digest=" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Normalize inputs
+              id: norm
+              shell: bash
+              run: |
+                  exp='${{ inputs.expected_digest }}'
+                  sb='${{ inputs.sbom_digest }}'
+                  verify_flag='false'
+                  if [ '${{ inputs.verify_signatures }}' = 'true' ]; then
+                    verify_flag='true'
+                  fi
+                  echo "expected=$exp" >> $GITHUB_OUTPUT
+                  echo "sbom=$sb" >> $GITHUB_OUTPUT
+                  echo "verify=$verify_flag" >> $GITHUB_OUTPUT
+
+            - name: Digest integrity check
+              id: integrity
+              shell: bash
+              run: |
+                  exp='${{ steps.norm.outputs.expected }}'
+                  recalc='${{ steps.sbomhash.outputs.sbom_digest }}'
+                  orig='${{ steps.norm.outputs.sbom }}'
+                  match="unknown"
+                  status="skipped"
+                  if [ -n "$exp" ]; then
+                    if [ -n "$recalc" ]; then
+                      if [ "$exp" = "$recalc" ]; then
+                        match="true"; status="verified";
+                      else
+                        match="false"; status="failed";
+                      fi
+                    else
+                      status="failed"; match="false"
+                    fi
+                  fi
+                  if [ "$status" = "failed" ]; then echo "Digest mismatch: expected=$exp recalculated=$recalc" >&2; fi
+                  echo "match=$match" >> $GITHUB_OUTPUT
+                  echo "derived=$recalc" >> $GITHUB_OUTPUT
+                  echo "status=$status" >> $GITHUB_OUTPUT
+                  echo "orig=$orig" >> $GITHUB_OUTPUT
+
+            - name: Cosign verify (optional)
+              if: ${{ steps.norm.outputs.verify == 'true' }}
+              id: sigcheck
+              shell: bash
+              run: |
+                  result="skipped"
+                  # Prefer artifacts in manifest/ directory if present
+                  SIG_FILE="manifest/manifest.sig"
+                  CERT_FILE="manifest/manifest.pem"
+                  JSON_FILE="manifest/security-manifest.json"
+                  [ -f manifest.sig ] && SIG_FILE="manifest.sig"
+                  [ -f manifest.pem ] && CERT_FILE="manifest.pem"
+                  [ -f security-manifest.json ] && JSON_FILE="security-manifest.json"
+                  if [ -f "$SIG_FILE" ] && [ -f "$CERT_FILE" ] && [ -f "$JSON_FILE" ]; then
+                    if ! command -v cosign >/dev/null 2>&1; then
+                      curl -sSfL https://github.com/sigstore/cosign/releases/download/v2.2.4/cosign-linux-amd64 -o cosign && chmod +x cosign
+                    fi
+                    if ./cosign verify-blob --certificate "$CERT_FILE" --signature "$SIG_FILE" "$JSON_FILE" >/dev/null 2>&1; then
+                      result="true"
+                    else
+                      result="false"
+                    fi
+                  fi
+                  echo "signature_verified=$result" >> $GITHUB_OUTPUT
+
+            - name: Enforce signature verify
+              if: ${{ steps.norm.outputs.verify == 'true' && steps.sigcheck.outputs.signature_verified == 'false' }}
+              run: |
+                  echo "Signature verification failed (signature_verified=false)." >&2
+                  exit 1
+
+            - name: Phase metrics
+              if: always()
+              id: metrics
+              shell: bash
+              run: |
+                  START=$(date -u +%s)
+                  END=$(date -u +%s)
+                  jq -n \
+                    --arg start "$START" \
+                    --arg end "$END" \
+                    --arg exp "${{ steps.norm.outputs.expected }}" \
+                    --arg rec "${{ steps.sbomhash.outputs.sbom_digest }}" \
+                    --arg match "${{ steps.integrity.outputs.match }}" \
+                    --arg orig "${{ steps.norm.outputs.sbom }}" \
+                    --arg sig "${{ steps.sigcheck.outputs.signature_verified }}" \
+                    '{phase:"verify",start:($start|tonumber),end:($end|tonumber),expected_digest:$exp,recalculated_digest:$rec,digest_match:$match,original_sbom_digest:$orig,signature_verified:$sig}' > metrics-verify.json
+
+            - name: Upload phase metrics
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-verify
+                  path: metrics-verify.json
+
+            - name: Enforce digest match
+              if: ${{ steps.integrity.outputs.status == 'failed' }}
+              run: exit 1

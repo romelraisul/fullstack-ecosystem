@@ -1,15 +1,18 @@
 from __future__ import annotations
-import hmac
+
 import hashlib
-from fastapi import FastAPI, Request, HTTPException
-import uuid
+import hmac
 import json
 import time
+import uuid
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+
 from .config import get_settings
 from .github_client import GitHubClient
+from .persistence import init_db, list_findings, recent_runs, record_run
 from .processors.events import EventProcessor
-from .persistence import init_db, record_run, recent_runs, list_findings
 
 app = FastAPI(title="Governance App", version="0.1.0")
 
@@ -18,9 +21,12 @@ app = FastAPI(title="Governance App", version="0.1.0")
 def _startup() -> None:
     # Initialize database schema
     init_db()
+
+
 settings = get_settings()
 client = GitHubClient()
 processor = EventProcessor(client)
+
 
 @app.get("/healthz")
 async def healthz():
@@ -36,7 +42,12 @@ async def runs(limit: int = 20):  # noqa: D401 - simple endpoint
 @app.get("/findings")
 async def findings(run_id: int | None = None, limit: int = 100):
     limit = max(1, min(limit, 500))
-    return {"items": list(list_findings(run_id=run_id, limit=limit)), "count": limit, "run_id": run_id}
+    return {
+        "items": list(list_findings(run_id=run_id, limit=limit)),
+        "count": limit,
+        "run_id": run_id,
+    }
+
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -61,7 +72,12 @@ async def webhook(request: Request):
         # Persist run summary if successful
         if result.get("status") == "ok":
             repo = payload.get("repository", {}).get("full_name", "unknown")
-            record_run(repo, result.get("branch", "unknown"), result.get("workflows_scanned", 0), result.get("findings", []))
+            record_run(
+                repo,
+                result.get("branch", "unknown"),
+                result.get("workflows_scanned", 0),
+                result.get("findings", []),
+            )
     elif event == "pull_request":
         result = await processor.handle_pull_request(payload)
     else:
@@ -72,7 +88,11 @@ async def webhook(request: Request):
         "event": event,
         "status": result.get("status"),
         "elapsed_ms": int(elapsed * 1000),
-        "findings_count": sum(len(f.get("issues", [])) for f in result.get("findings", [])) if result.get("status") == "ok" else 0,
+        "findings_count": (
+            sum(len(f.get("issues", [])) for f in result.get("findings", []))
+            if result.get("status") == "ok"
+            else 0
+        ),
     }
     print(json.dumps(log), flush=True)
     result["correlation_id"] = cid

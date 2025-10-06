@@ -1,0 +1,116 @@
+name: smoke-lite
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+jobs:
+    smoke:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        strategy:
+            matrix:
+                python-version: ["3.11", "3.12"]
+        env:
+            OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4317 # dummy endpoint (not actually collected)
+            ENABLE_TRACING: "true"
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+                  cache: "pip"
+                  cache-dependency-path: "requirements.txt"
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                  pip install pip-audit trivy
+
+            - name: actionlint
+              run: |
+                  curl -sSL https://github.com/rhysd/actionlint/releases/latest/download/actionlint_linux_amd64.tar.gz -o /tmp/actionlint.tgz
+                  tar -xzf /tmp/actionlint.tgz -C /tmp
+                  /tmp/actionlint -color 0 .github/workflows/smoke-lite.yml
+
+            - name: Helm lint
+              run: |
+                  if command -v helm; then helm lint deploy/helm/ultimate-summary || true; else echo "Helm not installed"; fi
+
+            - name: Launch app
+              run: |
+                  uvicorn "autogen.ultimate_enterprise_summary:UltimateEnterpriseSummary().app" --port 8000 &
+                  sleep 6
+
+            - name: Performance micro smoke
+              id: perf
+              run: |
+                  start=$(date +%s%3N)
+                  total=0
+                  for i in $(seq 1 25); do
+                    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d 'username=admin&password=changeme' http://localhost:8000/token || true)
+                    if [ "$code" = "200" ]; then total=$((total+1)); fi
+                  done
+                  end=$(date +%s%3N)
+                  dur=$((end-start))
+                  if [ $total -gt 0 ]; then avg=$((dur/total)); else avg=0; fi
+                  echo "Successful logins: $total in ${dur}ms (avg=${avg}ms)";
+                  echo "avg_ms=${avg}" >> $GITHUB_OUTPUT
+                  echo "total_success=${total}" >> $GITHUB_OUTPUT
+                  # Hard fail if avg > 750ms (performance regression guard)
+                  if [ $avg -gt 750 ] && [ $total -gt 5 ]; then echo "Performance regression: avg $avg ms > 750 ms"; exit 1; fi
+                  {
+                    echo "### Performance Micro Smoke";
+                    echo "Total successful logins: $total";
+                    echo "Average latency (ms): $avg";
+                  } >> $GITHUB_STEP_SUMMARY
+
+            - name: Smoke auth script
+              run: |
+                  if [ -f scripts/smoke_auth.py ]; then python scripts/smoke_auth.py --base http://localhost:8000 --user admin --password changeme; else echo 'smoke_auth.py missing'; fi
+
+            - name: Run lockout test with relaxed rate limit
+              env:
+                  RATE_LOGIN_LIMIT: 9999
+                  RATE_LOGIN_WINDOW: 60
+              run: |
+                  pytest -q tests/test_security_negative.py -m lockout || (echo "Lockout test failed" && exit 1)
+
+            - name: Run remaining focused tests (security + metrics)
+              run: |
+                  pytest -q tests/test_security_negative.py -k 'not test_account_lockout' tests/test_auth_metrics_security.py || (echo "Focused tests failed" && exit 1)
+
+            - name: Full pytest
+              run: |
+                  pytest -q || (echo "Full test suite failed" && exit 1)
+
+            - name: pip-audit (fail on vulnerabilities)
+              run: |
+                  if command -v pip-audit; then pip-audit --progress-spinner=off; else echo "pip-audit missing"; exit 1; fi
+
+            - name: Build minimal image
+              run: |
+                  docker build -t local/ultimate-summary:${{ github.sha }} .
+
+            - name: Trivy scan (HIGH/CRITICAL fail)
+              run: |
+                  if command -v trivy; then trivy image --exit-code 1 --severity HIGH,CRITICAL local/ultimate-summary:${{ github.sha }}; else echo "trivy missing"; exit 1; fi
+
+            - name: SBOM (syft) if available
+              run: |
+                  if command -v syft; then syft packages dir:. -o json > sbom.json; fi
+              continue-on-error: true
+
+            - name: Upload SBOM artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sbom-${{ matrix.python-version }}
+                  path: sbom.json
+                  if-no-files-found: ignore

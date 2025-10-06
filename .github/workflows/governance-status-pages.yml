@@ -1,0 +1,55 @@
+name: governance-status-pages
+
+on:
+    schedule:
+        - cron: "*/30 * * * *"
+    workflow_dispatch: {}
+    push:
+        branches:
+            - schemas
+        paths:
+            - "status/**"
+
+permissions:
+    contents: write
+    pages: write
+    id-token: write
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 1
+                  ref: schemas
+
+            - name: Prepare Pages content
+              run: |
+                  set -e
+                  mkdir -p public
+                  if [ -d status ]; then
+                    cp -r status/* public/
+                  fi
+                  # Ensure Jekyll does not process files
+                  touch public/.nojekyll
+                  echo 'title: API Governance Status' > public/_config.yml
+                  echo 'description: Live API stability & breaking change transparency' >> public/_config.yml
+                  # Provide a basic index if missing
+                  if [ ! -f public/index.html ]; then
+                    printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"><title>API Governance Status</title></head><body><h1>API Governance Status</h1><p>No composite index generated yet.</p></body></html>' > public/index.html
+                  fi
+                  ls -l public
+
+            - name: Setup Pages
+              uses: actions/configure-pages@v5
+
+            - name: Upload artifact
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: public
+
+            - name: Deploy to GitHub Pages
+              uses: actions/deploy-pages@v4
+              id: deployment

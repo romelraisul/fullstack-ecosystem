@@ -1,0 +1,27 @@
+# Development overrides
+image:
+  tag: dev
+
+env:
+  LOG_LEVEL: DEBUG
+  JSON_LOGGING: "true"
+  ENABLE_TRACING: "false"
+  ENABLE_ASYNC_MIGRATIONS: "true"
+  SUMMARY_AUTH_SECRET: dev_change_me
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 384Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+ingaess:
+  enabled: false
+
+hpa:
+  enabled: false
+
+serviceMonitor:
+  enabled: false

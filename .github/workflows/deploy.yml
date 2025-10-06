@@ -1,0 +1,71 @@
+# GitHub Actions CI/CD for Fullstack Ecosystem
+
+This workflow builds, tests, and deploys your FastAPI app using Docker.
+
+## .github/workflows/deploy.yml
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Lint and test
+        run: |
+          pip install pytest ruff
+          ruff autogen/
+          pytest
+      - name: Build Docker image
+        run: |
+          docker build -t fullstack-ecosystem .
+      - name: Save Docker image
+        run: |
+          docker save fullstack-ecosystem > fullstack-ecosystem.tar
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: fullstack-ecosystem.tar
+
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+      - name: Load Docker image
+        run: |
+          docker load < fullstack-ecosystem.tar
+      # Add your deployment step here (e.g., push to registry, SSH to server, etc.)
+      # Example: docker tag/push or docker-compose up
+      - name: Deploy (placeholder)
+        run: echo "Deploy step goes here."
+```
+
+## How to Extend
+- Add secrets for Docker registry or server credentials as needed.
+- Replace the deploy step with your actual deployment logic (e.g., push to ECR/GCR, SSH deploy, Azure Web App, etc.).
+- For Azure, use the `azure/webapps-deploy` action.
+
+---
+
+Place this file at `.github/workflows/deploy.yml` in your repo.

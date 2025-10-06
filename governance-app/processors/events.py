@@ -1,14 +1,17 @@
 from __future__ import annotations
-from typing import Any, Dict
+
+import contextlib
 from pathlib import Path
+from typing import Any
+
 from .action_refs import extract_action_refs, find_unpinned_external
-from typing import List
+
 
 class EventProcessor:
     def __init__(self, github_client):
         self.github_client = github_client
 
-    async def handle_push(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_push(self, payload: dict[str, Any]) -> dict[str, Any]:
         repo = payload.get("repository", {})
         owner = repo.get("owner", {}).get("login")
         name = repo.get("name")
@@ -17,7 +20,7 @@ class EventProcessor:
         ref = payload.get("ref", "refs/heads/main")
         branch = ref.split("/", 2)[-1]
         commits = payload.get("commits", [])
-        changed: List[str] = []
+        changed: list[str] = []
         for c in commits:
             for k in ("added", "modified"):
                 for p in c.get(k, []):
@@ -36,7 +39,9 @@ class EventProcessor:
         for path in workflow_paths:
             content = None
             if token and owner and name:
-                content = await self.github_client.get_workflow_file(owner, name, path, token, ref=f"heads/{branch}")
+                content = await self.github_client.get_workflow_file(
+                    owner, name, path, token, ref=f"heads/{branch}"
+                )
             # Fallback to local filesystem if remote fetch unavailable (useful for local simulation)
             if not content:
                 local_path = Path(path)
@@ -57,14 +62,27 @@ class EventProcessor:
             for f in findings:
                 lines.append(f"Workflow: {f['workflow']}")
                 for issue in f["issues"]:
-                    lines.append(f" - {issue['action']}@{issue['ref']} (pinned={issue['pinned']}, internal={issue['internal']})")
+                    lines.append(
+                        f" - {issue['action']}@{issue['ref']} (pinned={issue['pinned']}, internal={issue['internal']})"
+                    )
             summary = "Unpinned external action references detected:\n" + "\n".join(lines)
-            try:
-                await self.github_client.create_check_run(owner, name, "Governance Action Refs", head_sha, token, summary, conclusion="neutral")
-            except Exception:
-                pass
-        return {"status": "ok", "branch": branch, "workflows_scanned": len(workflow_paths), "findings": findings}
+            with contextlib.suppress(Exception):
+                await self.github_client.create_check_run(
+                    owner,
+                    name,
+                    "Governance Action Refs",
+                    head_sha,
+                    token,
+                    summary,
+                    conclusion="neutral",
+                )
+        return {
+            "status": "ok",
+            "branch": branch,
+            "workflows_scanned": len(workflow_paths),
+            "findings": findings,
+        }
 
-    async def handle_pull_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_pull_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         action = payload.get("action")
         return {"status": "ignored", "action": action}

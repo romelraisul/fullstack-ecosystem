@@ -1,0 +1,55 @@
+image:
+  repository: your-docker-repo/ultimate-summary
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env:
+  SUMMARY_AUTH_SECRET: change_me
+  LOG_LEVEL: INFO
+  JSON_LOGGING: "true"
+  ENABLE_TRACING: "false"
+  ENABLE_ASYNC_MIGRATIONS: "false"
+  POSTGRES_DSN: ""
+  TRACING_ENDPOINT: ""
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: ultimate.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: false
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+
+secret:
+  create: true
+  name: ultimate-summary-secret
+  data: {}

@@ -1,0 +1,6 @@
+connectors:
+  - webhook_url: "<PUT_YOUR_TEAMS_WEBHOOK_URL_HERE>"
+    # name and rules allow filtering; leave broad for now
+    name: default
+    rules:
+      - alertname: ".*"

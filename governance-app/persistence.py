@@ -1,8 +1,10 @@
 from __future__ import annotations
-import sqlite3
+
 import json
+import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 DB_PATH = Path("governance-app-data.sqlite")
 
@@ -28,16 +30,20 @@ CREATE TABLE IF NOT EXISTS findings (
 );
 """
 
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     return conn
+
 
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
 
 
-def record_run(repo: str, branch: str, workflows_scanned: int, findings: list[dict[str, Any]]) -> int:
+def record_run(
+    repo: str, branch: str, workflows_scanned: int, findings: list[dict[str, Any]]
+) -> int:
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -66,7 +72,10 @@ def record_run(repo: str, branch: str, workflows_scanned: int, findings: list[di
 def recent_runs(limit: int = 20) -> Iterable[dict[str, Any]]:
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, ts, repo, branch, workflows_scanned, findings_count FROM runs ORDER BY id DESC LIMIT ?", (limit,))
+        cur.execute(
+            "SELECT id, ts, repo, branch, workflows_scanned, findings_count FROM runs ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
         for row in cur.fetchall():
             yield {
                 "id": row[0],

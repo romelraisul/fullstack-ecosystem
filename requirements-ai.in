@@ -1,0 +1,36 @@
+## AI / Fast subset pinned separately for selective slim images
+# Alignment snapshot: Synchronized with primary requirements.txt on 2025-09-29
+# Strategy: For every package also present in the main lock, we pin the identical version
+# to eliminate resolver branching that previously caused ResolutionTooDeepError.
+# pyautogen is unique to this subset. httpx variant chosen matches main (httpx[http2]).
+# Update procedure:
+# 1. Refresh main lock (pip-compile primary).
+# 2. Mirror updated versions here (grep main requirements.txt for package).
+# 3. pip-compile --generate-hashes --allow-unsafe -o requirements-ai.txt requirements-ai.in
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.11.9
+httpx[http2]==0.27.0
+prometheus-fastapi-instrumentator==6.1.0
+orjson==3.11.3
+pyautogen==0.10.0  # Not in main lock; keep latest compatible
+openai==1.109.1
+anthropic==0.69.0
+langchain==0.3.27
+pandas==2.2.2
+numpy==2.2.6
+structlog==25.4.0
+prometheus-client==0.20.0
+redis==6.4.0
+sqlalchemy==2.0.43
+alembic==1.16.5
+celery==5.5.3
+python-dotenv==1.1.1
+pydantic-settings==2.11.0
+pytest==8.2.2
+pytest-asyncio==1.2.0
+
+# security / crypto
+cryptography==46.0.1
+passlib[bcrypt]==1.7.4

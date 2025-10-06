@@ -1,0 +1,88 @@
+global:
+  scrape_interval: 5s
+rule_files:
+  - /etc/prometheus/prometheus_rules.yml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+scrape_configs:
+  - job_name: "api"
+    static_configs:
+      - targets: ["api:8000"]
+  - job_name: "quantum-computing-center"
+    static_configs:
+      - targets: ["quantum_computing_center:5053"]
+  - job_name: "quantum-consciousness-merger"
+    static_configs:
+      - targets: ["quantum_consciousness_merger:5081"]
+  - job_name: "quantum-deployment-center"
+    static_configs:
+      - targets: ["quantum_deployment_center:5065"]
+  # Ultra services running on the Windows host
+  - job_name: "technology-breakthroughs-accelerator"
+    static_configs:
+      - targets: ["host.docker.internal:5056"]
+  - job_name: "reality-programming-protocol"
+    static_configs:
+      - targets: ["host.docker.internal:5083"]
+  - job_name: "omnipotent-consciousness-grid"
+    static_configs:
+      - targets: ["host.docker.internal:5086"]
+  - job_name: "multiverse-orchestration-center"
+    static_configs:
+      - targets: ["host.docker.internal:5096"]
+  - job_name: "quantum-computing-acceleration-enhanced"
+    static_configs:
+      - targets: ["qcae:5106"]
+  - job_name: "immediate-execution-center"
+    static_configs:
+      - targets: ["host.docker.internal:5069"]
+  - job_name: "full-ecosystem-activation"
+    static_configs:
+      - targets: ["host.docker.internal:5070"]
+  - job_name: "exponential-scaling-multiplier"
+    static_configs:
+      - targets: ["host.docker.internal:5076"]
+  - job_name: "dimensional-scaling-protocols"
+    static_configs:
+      - targets: ["host.docker.internal:5099"]
+  # AutoGen lightweight agent services (internal network targets)
+  - job_name: "agent-ultimate-summary"
+    static_configs:
+      - targets: ["autogen-ultimate-enterprise-summary:8000"]
+  - job_name: "agent-academic-research"
+    static_configs:
+      - targets: ["autogen-academic-research-platform:8000"]
+  - job_name: "agent-developer-ecosystem"
+    static_configs:
+      - targets: ["autogen-developer-ecosystem-engine:8000"]
+  - job_name: "agent-web-security"
+    static_configs:
+      - targets: ["autogen-web-security-knowledge-platform:8000"]
+  - job_name: "agent-topics-discovery"
+    static_configs:
+      - targets: ["autogen-awesome-topics-discovery-engine:8000"]
+  # Platform services metrics
+  - job_name: "blockchain-platform"
+    static_configs:
+      - targets: ["blockchain-platform:5205"]
+  - job_name: "iot-platform"
+    static_configs:
+      - targets: ["iot-platform:5206"]
+  - job_name: "cybersecurity-platform"
+    static_configs:
+      - targets: ["cybersecurity-platform:5207"]
+  - job_name: "mlops-platform"
+    static_configs:
+      - targets: ["mlops-platform:5208"]
+  - job_name: "orchestration-hub"
+    static_configs:
+      - targets: ["orchestration-hub:5210"]
+  - job_name: "monitoring-dashboard"
+    static_configs:
+      - targets: ["monitoring-dashboard:5211"]
+  - job_name: "traefik"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["traefik:9100"]

@@ -1,0 +1,58 @@
+name: pip-audit
+
+on:
+  pull_request:
+    paths:
+      - 'requirements*.txt'
+      - '.github/workflows/pip-audit.yml'
+      - 'scripts/**'
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Run pip-audit (requirements_platforms)
+        run: |
+          if [ -f requirements_platforms.txt ]; then pip-audit -r requirements_platforms.txt -f json -o pip-audit-platforms.json || true; fi
+
+      - name: Run pip-audit (taxonomy)
+        run: |
+          if [ -f requirements-taxonomy.txt ]; then pip-audit -r requirements-taxonomy.txt -f json -o pip-audit-taxonomy.json || true; fi
+      - name: Convert JSON to SARIF
+        run: |
+          python scripts/pip_audit_to_sarif.py
+
+      - name: Upload SARIF (platforms)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pip-audit-platforms.sarif
+
+      - name: Upload SARIF (taxonomy)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pip-audit-taxonomy.sarif
+
+      - name: Fail on High/Critical
+        run: |
+          python scripts/pip_audit_fail_on_severity.py

@@ -1,0 +1,22 @@
+[
+    {
+        "label": "deleted",
+        "pattern": "deleted"
+    },
+    {
+        "label": "removed",
+        "pattern": "removed"
+    },
+    {
+        "label": "incompatible",
+        "pattern": "incompatible"
+    },
+    {
+        "label": "required_change",
+        "pattern": "required field"
+    },
+    {
+        "label": "response_changed",
+        "pattern": "response changed"
+    }
+]

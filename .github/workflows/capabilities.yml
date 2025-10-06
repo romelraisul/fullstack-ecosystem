@@ -1,0 +1,95 @@
+name: Capabilities & Lean Packaging
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+    workflow_dispatch:
+
+jobs:
+    lean-capabilities:
+        name: Lean Build & Capabilities Probe
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, windows-latest]
+        timeout-minutes: 20
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install core dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  if [ "${{ runner.os }}" = "Windows" ]; then pip install -r requirements.txt || echo "(no requirements.txt)"; else pip install -r requirements.txt || echo "(no requirements.txt)"; fi
+                  pip install fastapi uvicorn pyinstaller tdigest prometheus-client passlib bcrypt python-magic-bin || true
+
+            - name: Build lean executable (PyInstaller)
+              shell: bash
+              run: |
+                  set -e
+                  if [ -f scripts/package_lean.ps1 ]; then
+                    echo "Using provided lean packaging script (Windows specialized)"
+                  fi
+                  pyinstaller --onefile autogen\\bootstrap_entry.py \
+                    --name advanced_backend_ci_lean \
+                    --add-data "executive_dashboard.html;." \
+                    --hidden-import tdigest --hidden-import accumulation_tree --hidden-import prometheus_client --hidden-import passlib --hidden-import bcrypt \
+                    --exclude-module torch --exclude-module tensorflow --exclude-module sklearn --exclude-module langchain --exclude-module openai --exclude-module anthropic || exit 1
+                  ls -l dist || dir dist
+
+            - name: Launch lean executable & probe endpoints
+              shell: bash
+              run: |
+                  set -e
+                  ./dist/advanced_backend_ci_lean &
+                  PID=$!
+                  echo "Started PID=$PID"
+                  # Wait for health
+                  ATTEMPTS=20
+                  until curl -fsS http://127.0.0.1:8000/health || [ $ATTEMPTS -le 0 ]; do
+                    sleep 1; ATTEMPTS=$((ATTEMPTS-1));
+                  done
+                  if [ $ATTEMPTS -le 0 ]; then echo "Health endpoint failed"; kill $PID || true; exit 1; fi
+                  echo "Health OK"
+                  # Capabilities (may 404 in minimal mode; treat as soft-fail)
+                    curl -fsS http://127.0.0.1:8000/ml-capabilities -o capabilities.json || echo '{"note":"/ml-capabilities missing in lean build"}' > capabilities.json
+                  echo "Capabilities:"; cat capabilities.json
+                  kill $PID || true
+              continue-on-error: false
+
+            - name: Upload capabilities artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: capabilities-${{ matrix.os }}
+                  path: capabilities.json
+
+    # Optional nightly full build (commented until heavy deps confirmed)
+    # full-ml-capabilities:
+    #   if: github.event_name == 'schedule'
+    #   runs-on: ubuntu-latest
+    #   steps:
+    #     - uses: actions/checkout@v4
+    #     - uses: actions/setup-python@v5
+    #       with:
+    #         python-version: '3.11'
+    #     - name: Install heavy dependencies
+    #       run: |
+    #         pip install --upgrade pip
+    #         pip install fastapi uvicorn pyinstaller torch scikit-learn langchain openai anthropic tdigest prometheus-client passlib bcrypt python-magic-bin
+    #     - name: Build full ML onedir
+    #       run: |
+    #         pyinstaller autogen/advanced_backend.py --onedir --name advanced_backend_full_onedir
+    #     - name: Start & probe
+    #       run: |
+    #         ./dist/advanced_backend_full_onedir/advanced_backend_full_onedir & PID=$!; sleep 5
+    #         curl -fsS http://127.0.0.1:8000/health
+    #         curl -fsS http://127.0.0.1:8000/ml-capabilities
+    #         kill $PID || true

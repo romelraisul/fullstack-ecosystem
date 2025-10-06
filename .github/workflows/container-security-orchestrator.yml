@@ -1,0 +1,195 @@
+name: Container Security Orchestrator
+
+on:
+    workflow_dispatch:
+        inputs:
+            fail-on:
+                description: Fail on severity (critical|high|medium|any|none)
+                required: false
+                default: critical
+            notify-provider:
+                description: Notification provider (slack|teams|discord|mattermost|email)
+                required: false
+                default: slack
+            notify-webhook-url:
+                description: Webhook URL for notification provider
+                required: false
+            notify-email-to:
+                description: Comma separated email recipients
+                required: false
+            notify-email-from:
+                description: Email from address
+                required: false
+            notify-email-subject:
+                description: Email subject
+                required: false
+            sign-artifacts:
+                description: Sign artifacts in attest/sign phase (true/false)
+                required: false
+                default: "false"
+    push:
+        paths:
+            - "Dockerfile*"
+            - "**/Dockerfile*"
+            - ".github/workflows/reusable/*.yml"
+            - ".github/workflows/container-security-orchestrator.yml"
+
+permissions:
+    contents: read
+    security-events: write
+    packages: write
+
+concurrency:
+    group: container-security-orchestrator-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    bootstrap:
+        name: Bootstrap Pre-Check
+        runs-on: ubuntu-latest
+        steps:
+            - name: Echo plan
+              run: |
+                  echo "Starting Container Security Orchestrator"
+                  echo "Phases: build_scan -> drift_policy -> policy_as_code; parallel branch: attest_sign -> publish -> verify; notify; sarif aggregation; metrics aggregation"
+                  echo "Fail-on policy: ${{ inputs.fail-on }}"
+                  echo "Notification provider: ${{ inputs.notify-provider }}"
+
+    build_scan:
+        name: Build & Scan
+        needs: bootstrap
+        uses: ./.github/workflows/reusable/security-build-scan.yml
+        secrets: inherit
+
+    drift_policy:
+        name: Drift & Policy
+        needs: build_scan
+        uses: ./.github/workflows/reusable/security-drift-policy.yml
+        with:
+            fail-on: ${{ inputs.fail-on }}
+            critical: ${{ needs.build_scan.outputs.critical }}
+            high: ${{ needs.build_scan.outputs.high }}
+            medium: ${{ needs.build_scan.outputs.medium }}
+        secrets: inherit
+
+    policy_as_code:
+        name: Policy-as-Code
+        needs: drift_policy
+        uses: ./.github/workflows/reusable/security-policy-as-code.yml
+        secrets: inherit
+
+    attest_sign:
+        name: Attest & Sign
+        needs: build_scan
+        uses: ./.github/workflows/reusable/security-attest-sign.yml
+        with:
+            sign-artifacts: ${{ inputs.sign-artifacts == 'true' }}
+            sbom_digest: ${{ needs.build_scan.outputs.sbom_digest }}
+        secrets: inherit
+
+    publish:
+        name: Publish
+        needs: attest_sign
+        uses: ./.github/workflows/reusable/security-publish.yml
+        with:
+            image-ref: synthetic-local
+            effective_digest: ${{ needs.attest_sign.outputs.effective_digest }}
+        secrets: inherit
+
+    verify:
+        name: Verify
+        needs: [attest_sign, publish]
+        uses: ./.github/workflows/reusable/security-verify.yml
+        with:
+            expected_digest: ${{ needs.attest_sign.outputs.effective_digest }}
+            sbom_digest: ${{ needs.build_scan.outputs.sbom_digest }}
+            verify_signatures: true
+        secrets: inherit
+
+    notify:
+        name: Notify
+        needs: [drift_policy, verify]
+        # Updated to clean workflow implementation; legacy file retained only for deprecation window.
+        uses: ./.github/workflows/reusable/security-notify-clean.yml
+        with:
+            # Canonical underscore inputs (workflow maintains backward-compatible hyphen aliases internally if needed)
+            provider: ${{ inputs.notify-provider }}
+            webhook: ${{ inputs.notify-webhook-url }}
+            email_to: ${{ inputs.notify-email-to }}
+            email_from: ${{ inputs.notify-email-from }}
+            email_subject: ${{ inputs.notify-email-subject }}
+            effective_digest: ${{ needs.attest_sign.outputs.effective_digest }}
+            digest_match: ${{ needs.verify.outputs.digest_match }}
+            signature_verified: ${{ needs.verify.outputs.signature_verified }}
+        secrets: inherit
+
+    sarif_aggregate:
+        name: SARIF Aggregate
+        needs: build_scan
+        uses: ./.github/workflows/reusable/security-sarif-aggregate.yml
+        secrets: inherit
+
+    metrics_aggregate:
+        name: Metrics Aggregate
+        needs:
+            [
+                build_scan,
+                drift_policy,
+                policy_as_code,
+                attest_sign,
+                publish,
+                verify,
+                notify,
+                sarif_aggregate,
+            ]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download phase metrics artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: metrics
+            - name: Merge metrics
+              id: merge_metrics
+              run: |
+                  set -e
+                  mkdir -p merged
+                  files=$(find metrics -type f -name 'metrics-*.json' 2>/dev/null | tr '\n' ' ')
+                  if [ -z "$files" ]; then echo '[]' > merged/metrics-all.json; else jq -s '.' $files > merged/metrics-all.json; fi
+                  echo '# Phase Metrics Summary' > merged/metrics-summary.md
+                  # Base duration lines
+                  jq -r '.[] | select(.duration_sec?) | "- " + .phase + ": duration=" + (.duration_sec|tostring)' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  # Append digest/integrity lines if present
+                  echo '' >> merged/metrics-summary.md
+                  echo '## Digests & Integrity' >> merged/metrics-summary.md
+                  jq -r '.[] | select(.effective_digest?) | "- " + .phase + ": effective_digest=" + .effective_digest' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  jq -r '.[] | select(.digest_match?) | "- " + .phase + ": digest_match=" + .digest_match' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  jq -r '.[] | select(.original_sbom_digest?) | "- " + .phase + ": original_sbom_digest=" + .original_sbom_digest' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  jq -r '.[] | select(.recalculated_digest?) | "- " + .phase + ": recalculated_digest=" + .recalculated_digest' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  jq -r '.[] | select(.signature_verified?) | "- " + .phase + ": signature_verified=" + .signature_verified' merged/metrics-all.json >> merged/metrics-summary.md || true
+                  # Produce canonical digest artifact (prefer verify effective digest if match true else first effective)
+                  CANON=$(jq -r '(.[] | select(.digest_match=="true") | .effective_digest) // (.[] | select(.effective_digest?) | .effective_digest) // empty' merged/metrics-all.json)
+                  if [ -n "$CANON" ]; then echo "{\"effective_digest\":\"$CANON\"}" > merged/canonical-digest.json; fi
+            - name: Upload canonical digest
+              if: ${{ hashFiles('merged/canonical-digest.json') != '' }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: canonical-digest
+                  path: merged/canonical-digest.json
+            - name: Canonical digest summary line
+              if: ${{ hashFiles('merged/canonical-digest.json') != '' }}
+              run: |
+                  CANON=$(jq -r '.effective_digest' merged/canonical-digest.json)
+                  echo "Canonical Effective Digest: $CANON" >> $GITHUB_STEP_SUMMARY
+            - name: Upload merged metrics
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-all
+                  path: |
+                      merged/metrics-all.json
+                      merged/metrics-summary.md
+                      merged/canonical-digest.json
+            - name: Append metrics summary
+              if: always()
+              run: |
+                  echo '### Metrics Aggregation' >> $GITHUB_STEP_SUMMARY
+                  if [ -f merged/metrics-summary.md ]; then cat merged/metrics-summary.md >> $GITHUB_STEP_SUMMARY; fi

@@ -1,0 +1,14 @@
+FROM python:3.11-slim-bookworm
+WORKDIR /app
+# Install runtime deps; keep base small
+RUN pip install --no-cache-dir fastapi uvicorn prometheus-client
+# Copy app
+COPY quantum_computing_acceleration_enhanced.py /app/quantum_computing_acceleration_enhanced.py
+# Expose service port
+EXPOSE 5106
+# Default env guardrails (can be overridden at runtime)
+ENV QCAE_MAX_SHOTS=10000 \
+    QCAE_MAX_OPS=256 \
+    QCAE_MAX_QUBITS=16
+# Run server
+CMD ["uvicorn", "quantum_computing_acceleration_enhanced:app", "--host", "0.0.0.0", "--port", "5106"]

@@ -1,0 +1,112 @@
+name: Security Drift Notify
+
+on:
+    workflow_call:
+        inputs:
+            drift-status:
+                required: true
+                type: string
+            current-digest:
+                required: false
+                type: string
+            previous-digest:
+                required: false
+                type: string
+            repository:
+                required: true
+                type: string
+            run-id:
+                required: true
+                type: string
+            notify-provider:
+                required: true
+                type: string
+            notify-webhook-url:
+                required: false
+                type: string
+            email-to:
+                required: false
+                type: string
+            email-from:
+                required: false
+                type: string
+            email-subject:
+                required: false
+                type: string
+            max-attempts:
+                required: false
+                type: number
+                default: 3
+            initial-delay-ms:
+                required: false
+                type: number
+                default: 1000
+            backoff-factor:
+                required: false
+                type: number
+                default: 2
+        outputs:
+            posted:
+                value: ${{ jobs.notify.outputs.posted }}
+            attempts:
+                value: ${{ jobs.notify.outputs.attempts }}
+            latency_ms:
+                value: ${{ jobs.notify.outputs.latency_ms }}
+
+jobs:
+    notify:
+        if: ${{ inputs.drift-status == 'changed' }}
+        runs-on: ubuntu-latest
+        outputs:
+            posted: ${{ steps.normalize.outputs.posted }}
+            attempts: ${{ steps.normalize.outputs.attempts }}
+            latency_ms: ${{ steps.normalize.outputs.latency_ms }}
+        steps:
+            - name: Capture start
+              id: start
+              run: echo "start_ms=$(date -u +%s%3N 2>/dev/null || echo $(($(date -u +%s)*1000)))" >> $GITHUB_OUTPUT
+
+            - name: Send notification
+              id: send
+              uses: ./.github/actions/drift-notify
+              with:
+                  provider: ${{ inputs.notify-provider }}
+                  webhook: ${{ inputs.notify-webhook-url }}
+                  status: ${{ inputs.drift-status }}
+                  current: ${{ inputs.current-digest }}
+                  previous: ${{ inputs.previous-digest }}
+                  repository: ${{ inputs.repository }}
+                  run-url: https://github.com/${{ inputs.repository }}/actions/runs/${{ inputs.run-id }}
+                  max-attempts: ${{ inputs.max-attempts }}
+                  initial-delay-ms: ${{ inputs.initial-delay-ms }}
+                  factor: ${{ inputs.backoff-factor }}
+                  email-to: ${{ inputs.email-to }}
+                  email-from: ${{ inputs.email-from }}
+                  email-subject: ${{ inputs.email-subject }}
+
+            - name: Normalize outputs
+              id: normalize
+              run: |
+                  POSTED='${{ steps.send.outputs.posted }}'
+                  ATTEMPTS='${{ steps.send.outputs.attempts }}'
+                  LAT='${{ steps.send.outputs.latency_ms }}'
+                  [ -z "$POSTED" ] && POSTED=false
+                  [ -z "$ATTEMPTS" ] && ATTEMPTS=0
+                  if [ -z "$LAT" ]; then
+                    if [ -n "${{ steps.start.outputs.start_ms }}" ] && [ "$ATTEMPTS" -gt 0 ]; then
+                      end_ms=$(date -u +%s%3N 2>/dev/null || echo $(($(date -u +%s)*1000)))
+                      LAT=$((end_ms - ${{ steps.start.outputs.start_ms }}))
+                    fi
+                  fi
+                  echo "posted=$POSTED" >> $GITHUB_OUTPUT
+                  echo "attempts=$ATTEMPTS" >> $GITHUB_OUTPUT
+                  echo "latency_ms=$LAT" >> $GITHUB_OUTPUT
+
+            - name: Summary
+              if: always()
+              run: |
+                  echo "### Drift Notification" >> $GITHUB_STEP_SUMMARY
+                  echo "Status: ${{ inputs.drift-status }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Posted: ${{ steps.normalize.outputs.posted }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Attempts: ${{ steps.normalize.outputs.attempts }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Latency (ms): ${{ steps.normalize.outputs.latency_ms }}" >> $GITHUB_STEP_SUMMARY

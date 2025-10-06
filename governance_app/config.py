@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import os
-from pydantic import BaseModel
 from functools import lru_cache
+
+from pydantic import BaseModel
+
 
 class Settings(BaseModel):
     app_id: str | None = os.getenv("GITHUB_APP_ID")
@@ -13,6 +16,7 @@ class Settings(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+
 
 @lru_cache
 def get_settings() -> Settings:

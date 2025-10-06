@@ -1,0 +1,43 @@
+# Hardened container for process orchestrator (ephemeral QA)
+ARG PYTHON_IMAGE=python:3.11.6-slim-bookworm
+FROM ${PYTHON_IMAGE} AS base
+
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=$GIT_COMMIT \
+    BUILD_DATE=$BUILD_DATE \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+LABEL org.opencontainers.image.title="orchestrator" \
+    org.opencontainers.image.description="Ephemeral orchestration & validation runner" \
+    org.opencontainers.image.revision="$GIT_COMMIT" \
+    org.opencontainers.image.created="$BUILD_DATE" \
+    org.opencontainers.image.source="https://github.com/<org>/<repo>"
+
+WORKDIR /app
+
+## System packages & security updates
+RUN set -eux; \
+    apt-get update; \
+    apt-get dist-upgrade -y --no-install-recommends; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*;
+
+## Dependency installation (hashed)
+# Copy only requirements first for layer caching. Ensure `requirements.txt` is hash-locked.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+
+# Copy scripts and data
+COPY scripts/orchestrator.py scripts/run_observability_validations.py scripts/compare_grafana_layout.py scripts/validate_alert_rules.py ./scripts/
+COPY alerts_taxonomy.json ./
+
+# Non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
+USER appuser
+
+ENTRYPOINT ["python", "scripts/orchestrator.py"]

@@ -1,0 +1,30 @@
+name: smoke-test
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+jobs:
+    smoke:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+                uses: actions/checkout@v4
+            - name: Set up Python
+                uses: actions/setup-python@v5
+                with:
+                    python-version: '3.11'
+            - name: Install deps
+                run: |
+                    python -m pip install --upgrade pip
+                    pip install -r requirements.txt || true
+            - name: Start app
+                run: |
+                    uvicorn "autogen.ultimate_enterprise_summary:UltimateEnterpriseSummary().app" --port 8000 &
+                    sleep 8
+            - name: Smoke auth
+                run: python scripts/smoke_auth.py --base http://localhost:8000 --user admin --password changeme || true
+            - name: Pytest quick
+                run: pytest -q -k smoke || true

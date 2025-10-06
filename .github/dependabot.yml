@@ -11,8 +11,8 @@ updates:
     labels:
       - "dependencies"
       - "ci"
-  # reviewers: ["your-github-handle"]  # Optional: add if you want automatic reviewers
-  # assignees: ["your-github-handle"]  # Optional: add if you want automatic assignees
+    # reviewers: ["your-github-handle"]  # Optional: add if you want automatic reviewers
+    # assignees: ["your-github-handle"]  # Optional: add if you want automatic assignees
     pull-request-branch-name:
       separator: "-"
 

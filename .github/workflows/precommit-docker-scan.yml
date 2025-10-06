@@ -1,0 +1,57 @@
+name: Pre-Commit Dockerfile Scan
+
+on:
+    pull_request:
+        paths:
+            - "**/Dockerfile*"
+            - "Dockerfile"
+    workflow_dispatch: {}
+    workflow_call: {}
+
+permissions:
+    contents: read
+    security-events: write
+
+jobs:
+    trivy-dockerfile-diff:
+        name: Trivy Dockerfile Quick Scan
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Detect changed Dockerfiles
+              id: diff
+              run: |
+                  set -e
+                  base_ref="${{ github.event.pull_request.base.sha || github.event.pull_request.base.ref || 'origin/main' }}"
+                  if [ -z "$base_ref" ]; then base_ref="origin/main"; fi
+                  git fetch --no-tags --depth=100 origin +refs/heads/*:refs/remotes/origin/*
+                  git diff --name-only "$base_ref"...HEAD | grep -Ei '(^|/)Dockerfile(\.|$)' | sort -u > changed_dockerfiles.txt || true
+                  echo 'Changed Dockerfiles:'
+                  cat changed_dockerfiles.txt || true
+                  COUNT=$(wc -l < changed_dockerfiles.txt 2>/dev/null || echo 0)
+                  echo "count=$COUNT" >> $GITHUB_OUTPUT
+            - name: Abort if none
+              if: ${{ steps.diff.outputs.count == '0' }}
+              run: echo 'No Dockerfile changes.'
+            - name: Install Trivy (standalone)
+              if: ${{ steps.diff.outputs.count != '0' }}
+              run: |
+                  curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                  trivy --version
+            - name: Scan changed Dockerfiles (vuln+secret)
+              if: ${{ steps.diff.outputs.count != '0' }}
+              run: |
+                  set -e
+                  while read -r df; do
+                    [ -n "$df" ] || continue
+                    echo "--- Scanning $df ---"
+                    trivy config --severity HIGH,CRITICAL --quiet --format table "$df" || true
+                    trivy fs --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --quiet --format table -f "$df" 2>/dev/null || true
+                  done < changed_dockerfiles.txt
+            - name: Aggregate quick findings (JSON)
+              if: ${{ steps.diff.outputs.count != '0' }}
+              run: |
+                  jq -n '{dockerfiles: (inputs // [] )}' < /dev/null || true

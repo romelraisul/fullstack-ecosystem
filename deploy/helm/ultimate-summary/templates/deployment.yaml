@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ultimate-summary.fullname" . }}
+  labels:
+    app: {{ include "ultimate-summary.name" . }}
+    chart: {{ include "ultimate-summary.chart" . }}
+spec:
+  replicas: {{ if .Values.hpa.enabled }}{{ .Values.hpa.minReplicas }}{{ else }}1{{ end }}
+  selector:
+    matchLabels:
+      app: {{ include "ultimate-summary.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "ultimate-summary.name" . }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- range $k, $v in .Values.env }}
+            - name: {{ $k }}
+              value: "{{ $v }}"
+            {{- end }}
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

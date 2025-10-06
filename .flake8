@@ -1,0 +1,45 @@
+[flake8]
+max-line-length = 100
+max-complexity = 10
+ignore =
+    E203,
+    E501,
+    W503,
+    E402,
+    F401
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    .eggs,
+    *.egg,
+    .pytest_cache,
+    .mypy_cache,
+    .ruff_cache,
+    build,
+    dist,
+    migrations,
+    node_modules,
+    complete-enterprise-activation.py,
+    ultimate_enterprise_summary.py,
+    aggregate_quantile_benchmarks.py,
+    render_governance_status.py,
+    start_unified_dashboard.py,
+    autogen/complete-enterprise-activation.py,
+    autogen/ultimate_enterprise_summary.py,
+    backend/tests/conftest.py,
+    governance-app/tests/test_action_refs.py,
+    scripts/aggregate_quantile_benchmarks.py,
+    scripts/render_governance_status.py,
+    scripts/start_unified_dashboard.py,
+    security/sarif_severity_extract.py
+per-file-ignores =
+    __init__.py:F401,E402
+    tests/*:S101,F401,F811
+    conftest.py:F401
+select =
+    E,
+    W,
+    F,
+    C

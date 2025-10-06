@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Quantum Stack Index</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            background: #0b1020;
+            color: #e8f0ff;
+            margin: 0;
+        }
+
+        header {
+            padding: 24px;
+            background: linear-gradient(90deg, #4a90e2, #7b68ee, #9932cc);
+            box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        main {
+            max-width: 900px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .card h2 {
+            margin: 0 0 8px;
+            font-size: 18px;
+            color: #bcd2ff;
+        }
+
+        .links {
+            display: grid;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        a {
+            color: #8cc4ff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        footer {
+            text-align: center;
+            color: #a3b3d9;
+            margin: 32px 0 16px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Quantum Stack Index</h1>
+    </header>
+    <main>
+        <p>Quick links to the Quantum services and their health checks.</p>
+        <div class="grid">
+            <div class="card">
+                <h2>Quantum Computing Center</h2>
+                <div class="links">
+                    <a href="http://localhost:5053/" target="_blank" rel="noopener noreferrer">UI</a>
+                    <a href="http://localhost:5053/health" target="_blank" rel="noopener noreferrer">Health</a>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Consciousness Merger System</h2>
+                <div class="links">
+                    <a href="http://localhost:5081/" target="_blank" rel="noopener noreferrer">UI</a>
+                    <a href="http://localhost:5081/health" target="_blank" rel="noopener noreferrer">Health</a>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Quantum Deployment Center</h2>
+                <div class="links">
+                    <a href="http://localhost:5065/" target="_blank" rel="noopener noreferrer">UI</a>
+                    <a href="http://localhost:5065/health" target="_blank" rel="noopener noreferrer">Health</a>
+                </div>
+            </div>
+        </div>
+    </main>
+    <footer>
+        Quantum Stack • Auto-refresh your Grafana Numbers Now dashboard for live KPIs.
+    </footer>
+</body>
+
+</html>

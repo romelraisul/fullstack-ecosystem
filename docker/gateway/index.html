@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fullstack Ecosystem Gateway</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 24px;
+            line-height: 1.4;
+        }
+
+        header {
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            margin: 0 0 4px;
+            font-size: 22px;
+        }
+
+        p {
+            margin: 4px 0 0;
+            color: #666;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .card h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .link {
+            display: inline-block;
+            margin-right: 10px;
+            margin-bottom: 6px;
+            text-decoration: none;
+            border: 1px solid #888;
+            border-radius: 18px;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+
+        .chip {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-align: middle;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+
+        .chip.ok {
+            background: #d8f5dc;
+            color: #0f5132;
+        }
+
+        .chip.bad {
+            background: #f8d7da;
+            color: #842029;
+        }
+
+        .chip.na {
+            background: #e2e3e5;
+            color: #41464b;
+        }
+
+        .small {
+            font-size: 12px;
+            color: #777;
+        }
+
+        .console {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 180px;
+            overflow: auto;
+            line-height: 1.3;
+            white-space: pre-wrap;
+        }
+
+        .console ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .console .group {
+            margin-bottom: 8px;
+        }
+
+        .console .group h4 {
+            margin: 4px 0;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .events {
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.03);
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 180px;
+            overflow: auto;
+        }
+
+        .console li {
+            padding: 2px 0;
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
+        }
+
+        .console li:last-child {
+            border-bottom: none;
+        }
+
+        .ok-line {
+            color: #0f5132;
+        }
+
+        .bad-line {
+            color: #842029;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 6px 0 8px;
+        }
+
+        .controls label {
+            font-size: 12px;
+        }
+
+        .controls select,
+        .controls button {
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+
+        .retention-input {
+            width: 70px;
+        }
+
+        footer {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .agent-refresh-note {
+            margin-top: 8px;
+            font-size: 11px;
+            opacity: .7;
+        }
+
+        /* Aggregated fleet summary row styling */
+        .status-ok td {
+            background: #d8f5dc;
+            color: #0f5132;
+        }
+
+        .status-down td {
+            background: #f8d7da;
+            color: #842029;
+        }
+
+        #agent-summary table tbody tr td {
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        #agent-summary table thead th {
+            border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+        }
+
+        #agent-summary .legend span {
+            display: inline-block;
+            margin-right: 10px;
+            font-size: 10px;
+            opacity: .8;
+        }
+
+        #agent-summary .legend i {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        #agent-summary .legend .ok-box {
+            background: #d8f5dc;
+            border: 1px solid #b6e3bf;
+        }
+
+        #agent-summary .legend .down-box {
+            background: #f8d7da;
+            border: 1px solid #e5b5b9;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Fullstack Ecosystem Control Panel</h1>
+        <p>Main dashboard for monitoring and controlling all services.</p>
+    </header>
+
+    <div class="grid">
+        <section class="card">
+            <h3>Service Control</h3>
+            <div class="controls">
+                <button id="start-all" type="button">Start All</button>
+                <button id="stop-all" type="button">Stop All</button>
+                <button id="restart-all" type="button">Restart All</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Dashboards & Monitoring</h3>
+            <div>
+                <a class="link" href="/grafana/">Grafana</a>
+                <span class="chip na" data-health="/grafana/api/health" data-name="Grafana">…</span>
+                <a class="link" href="/prometheus/">Prometheus</a>
+                <span class="chip na" data-health="/prometheus/-/healthy" data-name="Prometheus">…</span>
+                <a class="link" href="/alertmanager/">Alertmanager</a>
+                <span class="chip na" data-health="/alertmanager/api/v2/status" data-name="Alertmanager">…</span>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Health Check Console</h3>
+            <div class="controls">
+                <label><input type="checkbox" id="toggle-successes"> Include successes</label>
+                <label>Interval:
+                    <select id="interval-select">
+                        <option value="10000">10s</option>
+                        <option value="30000" selected>30s</option>
+                        <option value="60000">60s</option>
+                    </select>
+                </label>
+                <button id="test-all" type="button">Test all now</button>
+                <button id="clear-console" type="button">Clear</button>
+            </div>
+            <div id="health-console" class="console"><em>Waiting for checks…</em></div>
+        </section>
+
+        <section class="card">
+            <h3>Agents</h3>
+            <div id="agents-list" class="console"><em>Loading agents…</em></div>
+            <div class="agent-refresh-note">Auto-refreshed every 15s – showing health & key stats.</div>
+        </section>
+
+        <section class="card">
+            <h3>Agent Fleet Summary</h3>
+            <div id="agent-summary" class="console"><em>Loading summary…</em></div>
+        </section>
+
+        <section class="card">
+            <h3>Live Running Tasks</h3>
+            <div id="tasks-list" class="console"><em>No running tasks.</em></div>
+        </section>
+    </div>
+
+    <footer>
+        <div>Gateway: http://localhost:5125</div>
+    </footer>
+
+    <script>
+        // Service control buttons
+        document.getElementById('start-all').addEventListener('click', () => {
+            fetch('/api/control/start-all', { method: 'POST' });
+        });
+        document.getElementById('stop-all').addEventListener('click', () => {
+            fetch('/api/control/stop-all', { method: 'POST' });
+        });
+        document.getElementById('restart-all').addEventListener('click', () => {
+            fetch('/api/control/restart-all', { method: 'POST' });
+        });
+
+        // Health check console
+        const healthLog = [];
+        let includeSuccesses = false;
+        let intervalMs = 30000;
+        let intervalId = null;
+
+        function renderConsole() {
+            const consoleEl = document.getElementById('health-console');
+            if (!consoleEl) return;
+            const filtered = includeSuccesses ? healthLog : healthLog.filter(e => !e.ok);
+            if (filtered.length === 0) {
+                consoleEl.innerHTML = includeSuccesses ? '<em>No entries yet.</em>' : '<em>No failures recorded.</em>';
+                return;
+            }
+            const items = filtered
+                .map(entry => {
+                    const t = new Date(entry.time).toLocaleTimeString();
+                    const status = entry.status > 0 ? entry.status : 'network-error';
+                    const msg = entry.statusText ? ` — ${entry.statusText}` : '';
+                    const cls = entry.ok ? 'ok-line' : 'bad-line';
+                    return `<li class="${cls}">[${t}] ${status} ${entry.url}${msg}</li>`;
+                })
+                .join('');
+            consoleEl.innerHTML = `<ul>${items}</ul>`;
+        }
+
+        async function ping(url) {
+            try {
+                const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+                return { ok: res.ok, status: res.status ?? 0, statusText: res.statusText ?? '' };
+            } catch (e) {
+                return { ok: false, status: 0, statusText: (e && e.message) ? e.message : 'fetch failed' };
+            }
+        }
+
+        function setChip(el, result, checkedAt) {
+            const { ok, status } = result;
+            el.classList.remove('ok', 'bad', 'na');
+            if (ok) {
+                el.textContent = 'OK';
+                el.classList.add('ok');
+            } else {
+                el.textContent = 'DOWN';
+                el.classList.add('bad');
+            }
+            el.title = `Status: ${status || 'network-error'} • Last checked: ${new Date(checkedAt).toLocaleString()}`;
+        }
+
+        async function refreshChips() {
+            const chips = Array.from(document.querySelectorAll('[data-health]'));
+            const now = Date.now();
+            await Promise.all(chips.map(async chip => {
+                const url = chip.getAttribute('data-health');
+                const result = await ping(url);
+                setChip(chip, result, now);
+                healthLog.unshift({ time: now, url, status: result.status, statusText: result.statusText, ok: result.ok });
+                if (healthLog.length > 50) healthLog.pop();
+            }));
+            renderConsole();
+        }
+
+        function startInterval() {
+            if (intervalId) clearInterval(intervalId);
+            intervalId = setInterval(refreshChips, intervalMs);
+        }
+
+        document.getElementById('toggle-successes').addEventListener('change', (e) => {
+            includeSuccesses = e.target.checked;
+            renderConsole();
+        });
+        document.getElementById('interval-select').addEventListener('change', (e) => {
+            intervalMs = parseInt(e.target.value, 10);
+            startInterval();
+        });
+        document.getElementById('clear-console').addEventListener('click', () => {
+            healthLog.length = 0;
+            renderConsole();
+        });
+        document.getElementById('test-all').addEventListener('click', refreshChips);
+
+        refreshChips();
+        startInterval();
+
+        // Agents list (dynamic registry driven)
+        let AGENTS = [];
+
+        async function loadAgentRegistry() {
+            try {
+                const res = await fetch('/agents/ultimate/api/agents/list', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                // Map to gateway paths (nginx expects /agents/<registry-name>)
+                AGENTS = data.map(a => ({
+                    name: a.display_name || a.name,
+                    key: a.name,
+                    path: `/agents/${a.name}`,
+                    health: a.health_path || '/health',
+                    stats: a.name === 'ultimate' ? '/api/health' : '/api/stats'
+                }));
+            } catch (e) {
+                // ignore fetch errors; will retry next interval
+            }
+        }
+
+        async function fetchJson(url) {
+            try {
+                const r = await fetch(url, { cache: 'no-store' });
+                if (!r.ok) return null;
+                return await r.json();
+            } catch { return null; }
+        }
+
+        function renderAgents(state) {
+            const el = document.getElementById('agents-list');
+            if (!el) return;
+            if (!state || state.length === 0) { el.innerHTML = '<em>No agents.</em>'; return; }
+            el.innerHTML = state.map(a => {
+                const cls = a.up ? 'ok-line' : 'bad-line';
+                const base = `<div class=\"group\"><h4 style=\"margin:0 0 4px;\">${a.name} <span style=\"font-weight:400; opacity:.6;\">${a.path}</span></h4>`;
+                if (!a.up) return base + `<div class="${cls}">DOWN</div></div>`;
+                const stats = a.stats ? Object.entries(a.stats)
+                    .filter(([k]) => typeof a.stats[k] !== 'object')
+                    .slice(0, 6)
+                    .map(([k, v]) => `<span style="margin-right:6px;">${k}: <strong>${v}</strong></span>`).join(' ') : '';
+                return base + `<div class="${cls}">OK</div><div style="font-size:11px; line-height:1.4; margin-top:2px;">${stats || '<em>No stats</em>'}</div></div>`;
+            }).join('');
+        }
+
+        async function pollAgents() {
+            if (AGENTS.length === 0) {
+                await loadAgentRegistry();
+            }
+            if (AGENTS.length === 0) {
+                renderAgents([]);
+                return;
+            }
+            const results = await Promise.all(AGENTS.map(async ag => {
+                const base = ag.path;
+                const health = await fetchJson(base + ag.health);
+                let stats = null;
+                if (health) {
+                    stats = await fetchJson(base + ag.stats);
+                }
+                return { name: ag.name, path: ag.path, up: !!health, stats };
+            }));
+            renderAgents(results);
+        }
+
+        // initial load registry then poll
+        (async () => { await loadAgentRegistry(); await pollAgents(); })();
+        setInterval(async () => { await loadAgentRegistry(); await pollAgents(); }, 15000);
+
+        // Aggregated summary from ultimate service aggregator endpoint
+        async function loadAgentSummary() {
+            const el = document.getElementById('agent-summary');
+            if (!el) return;
+            try {
+                const res = await fetch('/agents/ultimate/api/agents/status');
+                if (!res.ok) { el.innerHTML = '<em>Failed to load summary.</em>'; return; }
+                const data = await res.json();
+                const { summary, agents } = data;
+                const rows = agents.map(a => {
+                    const cls = a.ok ? 'status-ok' : 'status-down';
+                    const platform = a.response && a.response.platform_status ? a.response.platform_status : '';
+                    const err = a.error ? a.error.slice(0, 60) : '';
+                    return `<tr class="${cls}"><td>${a.name}</td><td>${a.ok ? 'OK' : 'DOWN'}</td><td>${err}</td><td>${platform}</td></tr>`;
+                }).join('');
+                el.innerHTML = `
+                    <div style="font-size:11px; margin-bottom:4px;">Healthy: ${summary.healthy}/${summary.total}</div>
+                    <div class="legend" style="margin-bottom:4px;">
+                        <span><i class="ok-box"></i>OK</span>
+                        <span><i class="down-box"></i>DOWN</span>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                        <thead><tr><th style='text-align:left;'>Agent</th><th>Status</th><th>Error</th><th>Key</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+            } catch (e) {
+                el.innerHTML = '<em>Error loading summary.</em>';
+            }
+        }
+        loadAgentSummary();
+        setInterval(loadAgentSummary, 20000);
+
+        // Live running tasks
+        async function refreshTasks() {
+            const tasksListEl = document.getElementById('tasks-list');
+            if (!tasksListEl) return;
+            try {
+                const res = await fetch('/api/tasks');
+                if (!res.ok) {
+                    tasksListEl.innerHTML = '<em>Failed to load tasks.</em>';
+                    return;
+                }
+                const tasks = await res.json();
+                if (!Array.isArray(tasks) || tasks.length === 0) {
+                    tasksListEl.innerHTML = '<em>No running tasks.</em>';
+                    return;
+                }
+                const items = tasks.map(task => {
+                    return `<div><strong>${task.name}</strong> - ${task.status}</div>`;
+                }).join('');
+                tasksListEl.innerHTML = items;
+            } catch (e) {
+                tasksListEl.innerHTML = '<em>Error loading tasks.</em>';
+            }
+        }
+
+        setInterval(refreshTasks, 5000);
+        refreshTasks();
+    </script>
+</body>
+
+</html>

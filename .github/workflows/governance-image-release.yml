@@ -1,0 +1,100 @@
+name: governance-image-release
+
+on:
+    push:
+        tags:
+            - "governance-v*"
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Tag to release (e.g. governance-v0.1.0)"
+                required: false
+
+permissions:
+    contents: read
+    packages: write
+    id-token: write
+
+jobs:
+    build-push-sign:
+        runs-on: ubuntu-latest
+        env:
+            IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/governance-app
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Determine tag
+              id: vars
+              run: |
+                  if [ -n "${{ github.event.inputs.tag }}" ]; then
+                    echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+                  else
+                    echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Set up QEMU
+              uses: docker/setup-qemu-action@v3
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.repository_owner }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push (multi-arch)
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: governance_app/Dockerfile
+                  push: true
+                  tags: ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }},${{ env.IMAGE_NAME }}:latest
+                  platforms: linux/amd64,linux/arm64
+                  provenance: true
+                  sbom: true
+
+            - name: Install cosign
+              uses: sigstore/cosign-installer@v3
+
+            - name: Cosign sign image (keyless)
+              env:
+                  COSIGN_EXPERIMENTAL: "true"
+              run: |
+                  cosign sign --yes ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
+                  cosign sign --yes ${{ env.IMAGE_NAME }}:latest
+
+            - name: Generate attestations (provenance)
+              run: |
+                  echo '{}' > provenance.json
+                  cosign attest --yes --predicate provenance.json --type slsaprovenance ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
+                  # Extract provenance and sbom digests (placeholders if needed)
+                  echo "Collecting SBOM from build output if present" || true
+                  # docker build-push-action stores attestation reference automatically; we create explicit artifacts
+                  echo "image=${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}" > image-metadata.txt
+
+            - name: Download SPDX SBOM (if present)
+              run: |
+                  # Attempt to pull sbom attestation via cosign (best-effort)
+                  cosign download sbom ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }} > sbom.spdx.json || echo '{}' > sbom.spdx.json
+
+            - name: Upload release assets
+              uses: softprops/action-gh-release@v2
+              if: startsWith(github.ref, 'refs/tags/')
+              with:
+                  files: |
+                      sbom.spdx.json
+                      provenance.json
+                      image-metadata.txt
+                  draft: false
+                  prerelease: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Summary
+              run: |
+                  echo "Image: ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Latest: ${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY

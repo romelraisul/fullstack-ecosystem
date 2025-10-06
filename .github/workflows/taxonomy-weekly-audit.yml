@@ -1,0 +1,47 @@
+name: Weekly Alert Taxonomy Audit
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Mondays 03:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-taxonomy.txt
+
+      - name: Lint taxonomy strict aging
+        env:
+          TAXONOMY_DEPRECATION_MAX_DAYS: 60
+          TAXONOMY_DEPRECATION_STRICT: '1'
+        run: |
+          python scripts/sync_alert_taxonomy.py \
+            --rules docker/prometheus_rules.yml \
+            --taxonomy alerts_taxonomy.json \
+            --lint --check
+
+      - name: Generate changelog (for visibility)
+        run: |
+          python scripts/generate_alerts_changelog.py --out audit_changelog.md
+          cat audit_changelog.md
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: taxonomy-weekly-audit
+          path: |
+            audit_changelog.md

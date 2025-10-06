@@ -1,0 +1,330 @@
+{
+    "title": "Orchestrator Overview",
+    "uid": "orchestrator-overview",
+    "version": 1,
+    "refresh": "10s",
+    "time": {
+        "from": "now-30m",
+        "to": "now"
+    },
+    "annotations": {
+        "list": [
+            {
+                "name": "Alerts (firing)",
+                "type": "query",
+                "datasource": "Prometheus",
+                "enable": true,
+                "expr": "ALERTS{alertstate=\"firing\"}",
+                "iconColor": "rgba(255, 96, 96, 1)",
+                "titleFormat": "{{alertname}}",
+                "textFormat": "state={{alertstate}}"
+            }
+        ]
+    },
+    "links": [
+        {
+            "title": "API Overview",
+            "url": "/grafana/d/api-overview"
+        },
+        {
+            "title": "Help: Monitoring",
+            "url": "/grafana/d/alerts-overview",
+            "type": "link"
+        },
+        {
+            "title": "QCAE — Quick View",
+            "url": "/grafana/d/qcae-overview"
+        },
+        {
+            "title": "Route Detail: /orchestrate/quantum",
+            "url": "/grafana/d/route-detail?viewPanel=Latency%20(P95/P99)&var-method=All&var-route=%2Forchestrate%2Fquantum"
+        }
+    ],
+    "panels": [
+        {
+            "title": "Help: Gateway Links",
+            "type": "text",
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 2
+            },
+            "options": {
+                "content": "<strong>Gateway-aware links</strong><br/>\n+<a href=\"/prometheus/\">Prometheus UI</a> — metrics and targets<br/>\n+<a href=\"/alertmanager/\">Alertmanager</a> — active alerts and silences<br/>",
+                "mode": "html"
+            }
+        },
+        {
+            "title": "Maturity distribution (now)",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "ecosystem_systems_maturity_count"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 6,
+                "h": 6
+            },
+            "options": {
+                "displayMode": "gradient",
+                "reduceOptions": {
+                    "values": false,
+                    "calcs": [
+                        "lastNotNull"
+                    ]
+                }
+            }
+        },
+        {
+            "title": "Maturity counts over time (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "ecosystem_systems_maturity_count{maturity=\"verified\"}",
+                    "legendFormat": "verified"
+                },
+                {
+                    "expr": "ecosystem_systems_maturity_count{maturity=\"experimental\"}",
+                    "legendFormat": "experimental"
+                },
+                {
+                    "expr": "ecosystem_systems_maturity_count{maturity=\"inferred\"}",
+                    "legendFormat": "inferred"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 6,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Readiness % (with_health / total)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "(ecosystem_systems_with_health / ecosystem_systems_total) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percent",
+                    "decimals": 1
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 6,
+                "w": 6,
+                "h": 6
+            }
+        },
+        {
+            "title": "Verified systems (current)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "ecosystem_systems_maturity_count{maturity=\"verified\"}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 0,
+                "w": 6,
+                "h": 6
+            }
+        },
+        {
+            "title": "Experiment completions/min (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(app_requests_total_by_route{route=\"/orchestrate/full-experiment\",status=\"200\"}[5m]))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/min"
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Experiment p95 duration (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(app_request_duration_seconds_by_route_bucket{route=\"/orchestrate/full-experiment\",status=\"200\"}[5m])) by (le))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 12,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Per-system execute p95 (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le, system_slug) (rate(orchestrator_system_execute_duration_seconds_bucket[5m])))",
+                    "legendFormat": "p95 {{system_slug}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 12,
+                "w": 18,
+                "h": 8
+            }
+        },
+        {
+            "title": "Execute duration by mode (p95, 5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le, mode) (rate(orchestrator_system_execute_duration_seconds_bucket[5m])))",
+                    "legendFormat": "p95 {{mode}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 16,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Requests by route (5m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum by (route) (rate(app_requests_total_by_route[5m]))",
+                    "legendFormat": "{{route}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 24,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Orchestrate /quantum p95 (10m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le) (rate(app_request_duration_seconds_by_route_bucket{route=\"/orchestrate/quantum\"}[10m])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.7
+                            },
+                            {
+                                "color": "red",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        },
+        {
+            "title": "Orchestrate /quantum p99 (10m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum by (le) (rate(app_request_duration_seconds_by_route_bucket{route=\"/orchestrate/quantum\"}[10m])))"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1.0
+                            },
+                            {
+                                "color": "red",
+                                "value": 2.0
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 8,
+                "w": 6,
+                "h": 4
+            }
+        }
+    ]
+}

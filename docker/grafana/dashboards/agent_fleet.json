@@ -1,0 +1,180 @@
+{
+    "schemaVersion": 39,
+    "version": 1,
+    "editable": true,
+    "title": "Agent Fleet Overview",
+    "tags": [
+        "agents",
+        "fleet"
+    ],
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timezone": "browser",
+    "panels": [
+        {
+            "type": "row",
+            "title": "Traffic & Errors",
+            "collapsed": false,
+            "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            }
+        },
+        {
+            "type": "timeseries",
+            "title": "Requests Rate (req/s)",
+            "gridPos": {
+                "h": 7,
+                "w": 12,
+                "x": 0,
+                "y": 1
+            },
+            "targets": [
+                {
+                    "expr": "sum by (job) (rate(academic_research_requests_total[5m]))",
+                    "legendFormat": "academic"
+                },
+                {
+                    "expr": "sum by (job) (rate(developer_ecosystem_requests_total[5m]))",
+                    "legendFormat": "developer"
+                },
+                {
+                    "expr": "sum by (job) (rate(web_security_requests_total[5m]))",
+                    "legendFormat": "web-sec"
+                },
+                {
+                    "expr": "sum by (job) (rate(awesome_topics_requests_total[5m]))",
+                    "legendFormat": "topics"
+                }
+            ],
+            "options": {
+                "legend": {
+                    "showLegend": true
+                }
+            }
+        },
+        {
+            "type": "timeseries",
+            "title": "Request Duration p95 (s)",
+            "gridPos": {
+                "h": 7,
+                "w": 12,
+                "x": 12,
+                "y": 1
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(academic_research_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "academic p95"
+                },
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(developer_ecosystem_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "developer p95"
+                },
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(web_security_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "web-sec p95"
+                },
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(awesome_topics_request_duration_seconds_bucket[5m])) by (le))",
+                    "legendFormat": "topics p95"
+                }
+            ],
+            "options": {
+                "legend": {
+                    "showLegend": true
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Agents Up",
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 0,
+                "y": 8
+            },
+            "targets": [
+                {
+                    "expr": "sum(up{job=~\"agent-.*\"})",
+                    "legendFormat": "up"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": ""
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Inactive Agents (10m)",
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 4,
+                "y": 8
+            },
+            "targets": [
+                {
+                    "expr": "sum((sum by (job) (rate(academic_research_requests_total[10m])) == 0) + (sum by (job) (rate(developer_ecosystem_requests_total[10m])) == 0) + (sum by (job) (rate(web_security_requests_total[10m])) == 0) + (sum by (job) (rate(awesome_topics_requests_total[10m])) == 0))",
+                    "legendFormat": "inactive"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": ""
+                }
+            }
+        },
+        {
+            "type": "table",
+            "title": "Per-Agent Current Rates",
+            "gridPos": {
+                "h": 8,
+                "w": 16,
+                "x": 8,
+                "y": 8
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(academic_research_requests_total[5m]))",
+                    "legendFormat": "academic"
+                },
+                {
+                    "expr": "sum(rate(developer_ecosystem_requests_total[5m]))",
+                    "legendFormat": "developer"
+                },
+                {
+                    "expr": "sum(rate(web_security_requests_total[5m]))",
+                    "legendFormat": "web-sec"
+                },
+                {
+                    "expr": "sum(rate(awesome_topics_requests_total[5m]))",
+                    "legendFormat": "topics"
+                }
+            ],
+            "transformations": [],
+            "options": {
+                "showHeader": true
+            }
+        }
+    ],
+    "refresh": "30s",
+    "annotations": {
+        "list": []
+    },
+    "uid": "agent-fleet-overview",
+    "id": null
+}

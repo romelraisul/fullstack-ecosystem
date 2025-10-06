@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Service 5099 Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0));
+            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        label {
+            font-size: 12px;
+        }
+
+        input,
+        select,
+        button,
+        textarea {
+            font-size: 13px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .small {
+            font-size: 12px;
+            color: #777;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .ok {
+            color: #0f5132;
+        }
+
+        .bad {
+            color: #842029;
+        }
+
+        .toolbar {
+            gap: 8px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: 1px solid #ccc;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: #f6f8fa;
+        }
+
+        .btn.primary {
+            background: #0d6efd;
+            color: #fff;
+            border-color: #0d6efd;
+        }
+
+        .btn.primary:hover {
+            background: #0b5ed7;
+        }
+
+        .btn.ghost {
+            background: transparent;
+        }
+
+        .btn.icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .segmented {
+            display: inline-flex;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .segmented button {
+            border: 0;
+            padding: 6px 10px;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .segmented button.active {
+            background: #0d6efd;
+            color: #fff;
+        }
+
+        .segmented button+button {
+            border-left: 1px solid #ccc;
+        }
+
+        .select {
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background: #fff;
+        }
+
+        iframe {
+            width: 100%;
+            min-height: 360px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        pre.wrap {
+            white-space: pre-wrap;
+        }
+
+        .kv {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .kv label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .row-gap {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .mono-box {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        .mt8 {
+            margin-top: 8px;
+        }
+
+        /* History styles and utility */
+        .history-list {
+            list-style: none;
+            padding-left: 0;
+            margin: 6px 0 0;
+        }
+
+        .replay-btn {
+            margin-left: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="navbar">
+        <div class="row">
+            <h1>Service 5099 Dashboard</h1>
+            <span id="health-status" class="mono">—</span>
+        </div>
+        <div class="toolbar">
+            <a href="/" class="btn ghost icon" title="Back">
+                <span>←</span><span class="mono">Gateway</span>
+            </a>
+            <a href="/svc5099/" target="_blank" rel="noopener" class="btn ghost icon" title="Open proxied root">
+                <span>↗</span><span class="mono">/svc5099/</span>
+            </a>
+            <button id="btn-health" class="btn icon"><span>✓</span><span>Check Health</span></button>
+            <select id="presets" class="select" title="Presets"></select>
+            <button id="save-preset" class="btn">Save Preset</button>
+        </div>
+    </header>
+
+    <div class="grid">
+        <section class="card">
+            <h3>Quick Actions</h3>
+            <div class="kv">
+                <div class="segmented" role="group" aria-label="HTTP Method">
+                    <button type="button" data-method="GET" class="active">GET</button>
+                    <button type="button" data-method="POST">POST</button>
+                    <button type="button" data-method="PUT">PUT</button>
+                    <button type="button" data-method="DELETE">DELETE</button>
+                    <button type="button" data-method="PATCH">PATCH</button>
+                </div>
+                <input id="method" type="hidden" value="GET" />
+                <label>Endpoint
+                    <input id="endpoint" type="text" value="/svc5099/" size="28" />
+                </label>
+                <label>Content-Type
+                    <select id="contentType">
+                        <option value="application/json">application/json</option>
+                        <option value="text/plain">text/plain</option>
+                        <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                    </select>
+                </label>
+                <button id="send" class="btn primary">Send</button>
+                <button id="copy-curl" class="btn">Copy cURL</button>
+            </div>
+            <div class="small">Endpoints are proxied under /svc5099/. For example: /svc5099/api/health</div>
+            <div>
+                <label>Body</label>
+                <textarea id="body" placeholder='{"hello":"world"}'></textarea>
+            </div>
+            <div>
+                <label>Headers</label>
+                <textarea id="headers" placeholder='{"X-Api-Key":"abc123"}'></textarea>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Response</h3>
+            <div class="kv">
+                <div>Status: <span id="status" class="mono">—</span></div>
+                <div>Time: <span id="time" class="mono">—</span></div>
+                <button id="copy" class="btn">Copy body</button>
+                <button id="clear" class="btn ghost">Clear</button>
+            </div>
+            <pre id="resp" class="mono wrap">—</pre>
+        </section>
+
+        <section class="card">
+            <h3>Preview (optional)</h3>
+            <iframe id="preview" src="/svc5099/" title="Service 5099 preview"></iframe>
+        </section>
+
+        <section class="card">
+            <h3>History</h3>
+            <div class="small">Recent requests (local to this browser)</div>
+            <ul id="history" class="mono history-list"></ul>
+        </section>
+
+        <section class="card">
+            <h3>Compute Summary & Delegation</h3>
+            <div class="row-gap">
+                <button id="compute-refresh" class="btn">Refresh Summary</button>
+                <label>Event
+                    <input id="compute-event" type="text" value="service5099.compute.summary" size="28" />
+                </label>
+                <button id="compute-delegate" class="btn primary">Delegate from Summary</button>
+                <span id="compute-status" class="small mono">—</span>
+            </div>
+            <div class="mono mono-box mt8">
+                <pre id="compute-summary" class="wrap">{}</pre>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const $ = sel => document.querySelector(sel);
+        const $val = sel => (document.querySelector(sel)?.value || '').trim();
+        const LS = {
+            presets: 'svc5099.presets',
+            history: 'svc5099.history'
+        };
+        let presets = {};
+        let history = [];
+
+        async function checkHealth() {
+            const statusEl = $('#health-status');
+            statusEl.textContent = 'Checking…';
+            try {
+                const t0 = performance.now();
+                const res = await fetch('/svc5099/', { cache: 'no-store' });
+                const dt = Math.round(performance.now() - t0);
+                statusEl.textContent = `${res.status} ${res.statusText} (${dt} ms)`;
+                statusEl.className = res.ok ? 'mono ok' : 'mono bad';
+            } catch (e) {
+                statusEl.textContent = `ERR ${(e && e.message) || 'fetch failed'}`;
+                statusEl.className = 'mono bad';
+            }
+        }
+
+        async function sendRequest() {
+            const method = $val('#method');
+            const endpoint = $val('#endpoint') || '/svc5099/';
+            const contentType = $val('#contentType');
+            let body = $val('#body');
+            let headersTxt = $val('#headers');
+            let headers = {};
+            if (headersTxt) {
+                try { headers = JSON.parse(headersTxt); } catch { /* ignore */ }
+            }
+            const opts = { method, headers: { ...headers } };
+            if (contentType) opts.headers['Content-Type'] = contentType;
+            if (method !== 'GET' && method !== 'HEAD' && body) {
+                opts.body = body;
+            }
+            const statusEl = $('#status');
+            const timeEl = $('#time');
+            const respEl = $('#resp');
+            statusEl.textContent = '…';
+            timeEl.textContent = '…';
+            respEl.textContent = '…';
+            try {
+                const t0 = performance.now();
+                const res = await fetch(endpoint, opts);
+                const dt = Math.round(performance.now() - t0);
+                const text = await res.text();
+                statusEl.textContent = `${res.status} ${res.statusText}`;
+                timeEl.textContent = `${dt} ms`;
+                try {
+                    const obj = JSON.parse(text);
+                    respEl.textContent = JSON.stringify(obj, null, 2);
+                } catch {
+                    respEl.textContent = text;
+                }
+                // Record history entry
+                addHistory({ time: Date.now(), method, endpoint, status: res.status, ms: dt, body: body || '', headers: headers });
+            } catch (e) {
+                statusEl.textContent = 'ERR';
+                timeEl.textContent = '';
+                respEl.textContent = (e && e.message) || 'fetch failed';
+            }
+        }
+
+        function copyResp() {
+            const text = document.getElementById('resp').textContent || '';
+            navigator.clipboard.writeText(text).catch(() => { });
+        }
+
+        function clearResp() {
+            $('#status').textContent = '—';
+            $('#time').textContent = '—';
+            $('#resp').textContent = '—';
+        }
+
+        function buildCurl() {
+            const method = $val('#method');
+            const endpoint = $val('#endpoint') || '/svc5099/';
+            const contentType = $val('#contentType');
+            let body = $val('#body');
+            let headersTxt = $val('#headers');
+            let parts = [
+                `curl -X ${method}`,
+                `"${endpoint}"`
+            ];
+            if (contentType) parts.splice(1, 0, `-H "Content-Type: ${contentType}"`);
+            if (headersTxt) {
+                try {
+                    const hdrs = JSON.parse(headersTxt);
+                    for (const [k, v] of Object.entries(hdrs)) {
+                        parts.splice(1, 0, `-H "${k}: ${String(v)}"`);
+                    }
+                } catch { /* ignore */ }
+            }
+            if (method !== 'GET' && method !== 'HEAD' && body) {
+                parts.splice(1, 0, `--data '${body.replace(/'/g, "'\\''")}'`);
+            }
+            return parts.join(' ');
+        }
+
+        function copyCurl() {
+            const cmd = buildCurl();
+            navigator.clipboard.writeText(cmd).catch(() => { });
+        }
+
+        function addHistory(entry) {
+            history.unshift(entry);
+            history = history.slice(0, 20);
+            try { localStorage.setItem(LS.history, JSON.stringify(history)); } catch { }
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const ul = $('#history');
+            if (!ul) return;
+            if (!history.length) { ul.innerHTML = '<li class="small">No requests yet.</li>'; return; }
+            ul.innerHTML = history.map((h, i) => {
+                const t = new Date(h.time).toLocaleTimeString();
+                const cls = (h.status && h.status < 400) ? 'ok' : 'bad';
+                return `<li data-idx="${i}">[${t}] <strong>${h.method}</strong> <span class="mono">${h.endpoint}</span> <span class="${cls}">${h.status || 'ERR'}</span> <button data-action="replay" class="btn ghost replay-btn">Replay</button></li>`
+            }).join('');
+            ul.querySelectorAll('button[data-action="replay"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.currentTarget.parentElement.getAttribute('data-idx'), 10);
+                    const h = history[idx];
+                    if (!h) return;
+                    setMethod(h.method);
+                    $('#endpoint').value = h.endpoint;
+                    $('#body').value = h.body || '';
+                    $('#headers').value = JSON.stringify(h.headers || {}, null, 2);
+                });
+            });
+        }
+
+        function loadPresets() {
+            try { presets = JSON.parse(localStorage.getItem(LS.presets) || '{}'); } catch { presets = {}; }
+            const sel = $('#presets');
+            if (!sel) return;
+            sel.innerHTML = `<option value="">Presets…</option>` + Object.keys(presets).sort().map(k => `<option>${k}</option>`).join('');
+            sel.addEventListener('change', () => {
+                const key = sel.value;
+                if (!key || !presets[key]) return;
+                const p = presets[key];
+                setMethod(p.method || 'GET');
+                $('#endpoint').value = p.endpoint || '/svc5099/';
+                $('#contentType').value = p.contentType || 'application/json';
+                $('#body').value = p.body || '';
+                $('#headers').value = JSON.stringify(p.headers || {}, null, 2);
+            });
+        }
+
+        function savePreset() {
+            const name = prompt('Preset name?');
+            if (!name) return;
+            const method = $val('#method');
+            const endpoint = $val('#endpoint') || '/svc5099/';
+            const contentType = $val('#contentType');
+            let headersTxt = $val('#headers');
+            let headers = {};
+            if (headersTxt) { try { headers = JSON.parse(headersTxt); } catch { } }
+            const body = $val('#body');
+            presets[name] = { method, endpoint, contentType, headers, body };
+            try { localStorage.setItem(LS.presets, JSON.stringify(presets)); } catch { }
+            loadPresets();
+            $('#presets').value = name;
+        }
+
+        function setMethod(m) {
+            const hidden = $('#method');
+            if (hidden) hidden.value = m;
+            document.querySelectorAll('.segmented button').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.method === m);
+            });
+        }
+
+        async function buildComputeSummary() {
+            const statusEl = document.getElementById('compute-status');
+            statusEl.textContent = 'Gathering…';
+            const summary = { ts: Math.floor(Date.now() / 1000), endpoint: '/svc5099/' };
+            try {
+                // Measure root
+                const t0 = performance.now();
+                const res = await fetch('/svc5099/', { cache: 'no-store' });
+                summary.root_status = res.status;
+                summary.root_ok = res.ok;
+                summary.root_ms = Math.round(performance.now() - t0);
+            } catch (e) {
+                summary.root_error = (e && e.message) || 'fetch failed';
+            }
+            try {
+                // Optional JSON health
+                const h = await fetch('/svc5099/api/health', { cache: 'no-store' });
+                if (h.ok) {
+                    try { summary.health = await h.json(); } catch { summary.health_text = await h.text(); }
+                } else {
+                    summary.health_status = h.status;
+                }
+            } catch { }
+            try {
+                // Optional metrics presence (don’t parse, just check reachable)
+                const m = await fetch('/svc5099/metrics', { cache: 'no-store' });
+                summary.metrics_status = m.status;
+            } catch { }
+            document.getElementById('compute-summary').textContent = JSON.stringify(summary, null, 2);
+            statusEl.textContent = 'Ready';
+        }
+
+        async function delegateFromSummary() {
+            const statusEl = document.getElementById('compute-status');
+            const eventName = ($val('#compute-event') || 'service5099.compute.summary');
+            let payload = {};
+            try {
+                payload = JSON.parse(document.getElementById('compute-summary').textContent || '{}');
+            } catch { payload = {}; }
+            statusEl.textContent = 'Delegating…';
+            try {
+                const res = await fetch('/api/orchestrate/delegate', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: eventName, payload: { service5099: payload }, include_experimental: true })
+                });
+                let msg = `HTTP ${res.status}`;
+                if (res.ok) {
+                    try {
+                        const data = await res.json();
+                        msg = `OK ${data.ok ?? '-'} / ${data.total ?? '-'} (${data.duration_ms ?? '-'} ms)`;
+                    } catch { }
+                }
+                statusEl.textContent = msg;
+            } catch (e) {
+                statusEl.textContent = (e && e.message) || 'delegate failed';
+            }
+        }
+
+        document.getElementById('btn-health').addEventListener('click', checkHealth);
+        document.getElementById('send').addEventListener('click', sendRequest);
+        document.getElementById('copy').addEventListener('click', copyResp);
+        document.getElementById('clear').addEventListener('click', clearResp);
+        document.getElementById('copy-curl').addEventListener('click', copyCurl);
+        document.getElementById('save-preset').addEventListener('click', savePreset);
+        document.querySelectorAll('.segmented button').forEach(btn => btn.addEventListener('click', () => setMethod(btn.dataset.method)));
+        document.getElementById('compute-refresh').addEventListener('click', buildComputeSummary);
+        document.getElementById('compute-delegate').addEventListener('click', delegateFromSummary);
+
+        // Init
+        loadPresets();
+        try { history = JSON.parse(localStorage.getItem(LS.history) || '[]'); } catch { history = []; }
+        renderHistory();
+        // Build initial compute summary
+        buildComputeSummary();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,42 @@
+[
+    {
+        "title": "Internal Service State Timeline",
+        "type": "state-timeline",
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+    },
+    {
+        "title": "Internal Service p99 Latency",
+        "type": "timeseries",
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+    },
+    {
+        "title": "Internal Service Failure Rate",
+        "type": "timeseries",
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+    },
+    {
+        "title": "Attempts vs OK",
+        "type": "barchart",
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+    },
+    {
+        "title": "Latency Class Breakdown",
+        "type": "piechart",
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+    }
+]

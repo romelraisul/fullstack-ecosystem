@@ -1,0 +1,258 @@
+{
+    "id": null,
+    "uid": "alerts-taxonomy-overview",
+    "title": "Alerts Overview (Taxonomy Driven)",
+    "tags": [
+        "alerts",
+        "taxonomy"
+    ],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+        {
+            "type": "text",
+            "title": "Taxonomy Summary",
+            "gridPos": {
+                "h": 6,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "options": {
+                "mode": "markdown",
+                "content": "## Alert Taxonomy\nThis dashboard is taxonomy-driven. A JSON API datasource named **Alerts Taxonomy API** should point to the lightweight server (e.g. `python scripts/serve_taxonomy_http.py --port 8000`).\n\nEndpoint reference:\n- `/taxonomy` (full object)\n- `/taxonomy/alerts` (alerts array)\n\nRegenerate artifacts (Markdown / JSONL / HTML):\n`````\npython scripts/sync_alert_taxonomy.py --rules docker/prometheus_rules.yml --taxonomy ../../alerts_taxonomy.json --lint --emit-markdown docs/alerts_taxonomy.generated.md --emit-jsonl docs/alerts_annotations.jsonl --emit-html docs/alerts_taxonomy.html\n`````"
+            }
+        },
+        {
+            "type": "table",
+            "title": "Static Taxonomy Snapshot (manual)",
+            "gridPos": {
+                "h": 12,
+                "w": 24,
+                "x": 0,
+                "y": 6
+            },
+            "options": {
+                "showHeader": true
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "expr": "vector(0)"
+                }
+            ],
+            "pluginVersion": "10.0.0",
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            }
+        },
+        {
+            "type": "table",
+            "title": "Live Taxonomy (JSON API)",
+            "datasource": {
+                "type": "marcusolsson-json-datasource",
+                "uid": "alerts-taxonomy-api"
+            },
+            "gridPos": {
+                "h": 24,
+                "w": 24,
+                "x": 0,
+                "y": 18
+            },
+            "options": {
+                "showHeader": true
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "url": "/taxonomy/alerts",
+                    "method": "GET",
+                    "queryParams": [],
+                    "headers": [],
+                    "body": "",
+                    "data": "",
+                    "cacheDurationSeconds": 30
+                }
+            ],
+            "transformations": [
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {},
+                        "indexByName": {},
+                        "renameByName": {},
+                        "order": [
+                            "alert",
+                            "group",
+                            "severity",
+                            "scope",
+                            "category",
+                            "slo",
+                            "for",
+                            "windows"
+                        ]
+                    }
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "align": "left"
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "severity"
+                        },
+                        "properties": [
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "type": 1,
+                                        "options": {
+                                            "from": "",
+                                            "to": "",
+                                            "result": {
+                                                "text": "info"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-text"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byValue",
+                            "options": {
+                                "value": "critical"
+                            }
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "red",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byValue",
+                            "options": {
+                                "value": "warning"
+                            }
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "orange",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byValue",
+                            "options": {
+                                "value": "info"
+                            }
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "blue",
+                                    "mode": "fixed"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "title": "Deprecated Alerts",
+            "datasource": {
+                "type": "marcusolsson-json-datasource",
+                "uid": "alerts-taxonomy-api"
+            },
+            "gridPos": {
+                "h": 12,
+                "w": 24,
+                "x": 0,
+                "y": 42
+            },
+            "options": {
+                "showHeader": true
+            },
+            "targets": [
+                {
+                    "refId": "A",
+                    "url": "/taxonomy/alerts",
+                    "method": "GET",
+                    "queryParams": [],
+                    "headers": [],
+                    "body": "",
+                    "data": "",
+                    "cacheDurationSeconds": 30
+                }
+            ],
+            "transformations": [
+                {
+                    "id": "filterFieldsByName",
+                    "options": {
+                        "include": [
+                            "alert",
+                            "group",
+                            "severity",
+                            "deprecated",
+                            "description"
+                        ]
+                    }
+                },
+                {
+                    "id": "filterDataByQuery",
+                    "options": {
+                        "conditions": [
+                            {
+                                "field": "deprecated",
+                                "operator": "=",
+                                "value": true
+                            }
+                        ]
+                    }
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "align": "left"
+                    }
+                },
+                "overrides": []
+            }
+        }
+    ],
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    }
+}

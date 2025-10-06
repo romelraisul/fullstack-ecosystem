@@ -1,0 +1,27 @@
+{
+    "version": 1,
+    "features": {
+        "enableCosign": true,
+        "enableImagePush": true,
+        "enableSbomSigning": true,
+        "enablePolicies": true,
+        "enableReproducibilityCheck": true,
+        "enableOrasAttach": true
+    },
+    "thresholds": {
+        "MAX_ALLOWED_CRITICAL": 0,
+        "MAX_ALLOWED_HIGH": 5,
+        "MAX_ALLOWED_TOTAL_HIGH_CRITICAL": 5
+    },
+    "policy": {
+        "requireBundles": true,
+        "requireSbomSignatures": true,
+        "requireAttestationSubjectMatch": true,
+        "failOnConftestWarn": false,
+        "slsaRequiredLevel": 1,
+        "failOnReproMismatch": true,
+        "requireOrasSbomMediaTypes": false,
+        "strictOrasIndexCheck": false,
+        "signOrasIndex": true
+    }
+}

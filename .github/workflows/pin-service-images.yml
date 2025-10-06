@@ -1,0 +1,89 @@
+name: pin-service-images
+
+on:
+  schedule:
+    - cron: '27 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pin-digests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Discover service Dockerfiles
+        id: discover
+        name: pin-service-images
+
+        on:
+          schedule:
+            - cron: '27 2 * * *'
+          workflow_dispatch: {}
+
+        permissions:
+          contents: write
+          pull-requests: write
+
+        jobs:
+          pin-digests:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout
+                uses: actions/checkout@v4
+                with:
+                  fetch-depth: 0
+
+              - name: Set up Docker
+                uses: docker/setup-buildx-action@v3
+
+              - name: Discover service Dockerfiles
+                id: discover
+                run: |
+                  set -e
+                  files=$(git ls-files '*Dockerfile' | grep -E '(^|/)governance_app/|(^|/)backend/' || true)
+                  echo "Found files: $files"
+                  echo "files=$files" >> $GITHUB_OUTPUT
+
+              - name: Resolve & Replace Base Image Digests
+                id: pin
+                env:
+                  FILES: ${{ steps.discover.outputs.files }}
+                run: |
+                  changed=0
+                  for file in $FILES; do
+                    [ -z "$file" ] && continue
+                    [ -f "$file" ] || { echo "Missing $file"; continue; }
+                    base=$(grep -E '^FROM ' "$file" | head -n1 | awk '{print $2}')
+                    if echo "$base" | grep -q '@sha256:'; then echo "Already pinned: $base"; continue; fi
+                    echo "Pulling $base"; docker pull "$base" >/dev/null
+                    digest=$(docker image inspect "$base" --format '{{index .RepoDigests 0}}' | awk -F'@' '{print $2}')
+                    if [ -z "$digest" ]; then echo "No digest for $base"; continue; fi
+                    newref="${base%@*}@$digest"
+                    echo "Pinning $base -> $newref in $file"
+                    sed -i "s|^FROM $base|FROM $newref|" "$file"
+                    changed=1
+                  done
+                  if [ $changed -eq 0 ]; then echo "no_change=1" >> $GITHUB_OUTPUT; else echo "no_change=0" >> $GITHUB_OUTPUT; fi
+
+              - name: Create PR
+                if: steps.pin.outputs.no_change == '0'
+                uses: peter-evans/create-pull-request@v6
+                with:
+                  commit-message: 'chore(images): pin service base image digests'
+                  title: 'chore: pin service image base digests'
+                  body: |
+                    Automated digest pin for service Dockerfiles (backend, governance_app).
+
+                    Review base image updates for security/vuln resolution.
+                  branch: chore/pin-service-image-digests
+                  labels: dependencies,security

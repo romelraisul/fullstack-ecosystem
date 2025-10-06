@@ -1,0 +1,27 @@
+[PHASE] INIT: advanced_backend import start SAFE_MODE=False RAW='None'
+advanced_backend.py:213: DeprecationWarning: There is no current event loop
+advanced_backend.py:668: DeprecationWarning:
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+[PHASE] Imports: core FastAPI/Pydantic done
+(trapped) error reading bcrypt version
+Traceback (most recent call last):
+  File "passlib\handlers\bcrypt.py", line 620, in _load_backend_mixin
+AttributeError: module 'bcrypt' has no attribute '__about__'
+[EARLY-CRASH] Uncaught exception: Traceback (most recent call last):
+  File "advanced_backend.py", line 1044, in <module>
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "autogen\auth_router.py", line 14, in <module>
+    from jwt_auth_service import jwt_auth_service, get_current_active_user, require_admin
+ModuleNotFoundError: No module named 'jwt_auth_service'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "advanced_backend.py", line 1049, in <module>
+ModuleNotFoundError: No module named 'security_middleware'
+
+[PYI-7200:ERROR] Failed to execute script 'advanced_backend' due to unhandled exception!

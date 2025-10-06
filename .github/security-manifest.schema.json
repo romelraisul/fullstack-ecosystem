@@ -1,0 +1,222 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Security Manifest",
+    "type": "object",
+    "required": [
+        "image",
+        "artifacts",
+        "attestations",
+        "supply_chain",
+        "policy",
+        "git",
+        "tool_versions",
+        "generated_at"
+    ],
+    "properties": {
+        "image": {
+            "type": "object",
+            "required": [
+                "reference",
+                "digest"
+            ],
+            "properties": {
+                "reference": {
+                    "type": "string",
+                    "minLength": 3
+                },
+                "digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                }
+            }
+        },
+        "artifacts": {
+            "type": "object",
+            "required": [
+                "sbom_cyclonedx",
+                "sbom_spdx",
+                "policy_evaluation"
+            ],
+            "properties": {
+                "sbom_cyclonedx": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "sbom_spdx": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "provenance_attestation": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "policy_evaluation": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "top_critical_cves": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "openvex": {
+                    "$ref": "#/$defs/artifactRef"
+                },
+                "sbom_drift": {
+                    "$ref": "#/$defs/artifactRef"
+                }
+            }
+        },
+        "attestations": {
+            "type": "object",
+            "properties": {
+                "provenance": {
+                    "type": "string"
+                },
+                "sbom_cyclonedx": {
+                    "type": "string"
+                },
+                "sbom_spdx": {
+                    "type": "string"
+                }
+            }
+        },
+        "supply_chain": {
+            "type": "object",
+            "required": [
+                "base_image_provenance",
+                "openvex_status",
+                "drift"
+            ],
+            "properties": {
+                "base_image_provenance": {
+                    "type": "string"
+                },
+                "openvex_status": {
+                    "type": "string"
+                },
+                "drift": {
+                    "type": "object",
+                    "required": [
+                        "added",
+                        "removed"
+                    ],
+                    "properties": {
+                        "added": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "removed": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    }
+                }
+            }
+        },
+        "policy": {
+            "type": "object",
+            "required": [
+                "decision",
+                "reason",
+                "severities"
+            ],
+            "properties": {
+                "decision": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "severities": {
+                    "type": "object",
+                    "required": [
+                        "critical",
+                        "high",
+                        "medium"
+                    ],
+                    "properties": {
+                        "critical": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "high": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "medium": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    }
+                }
+            }
+        },
+        "git": {
+            "type": "object",
+            "required": [
+                "ref",
+                "sha"
+            ],
+            "properties": {
+                "ref": {
+                    "type": "string"
+                },
+                "sha": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{40}$"
+                }
+            }
+        },
+        "tool_versions": {
+            "type": "object",
+            "required": [
+                "cosign",
+                "syft",
+                "grype"
+            ],
+            "properties": {
+                "cosign": {
+                    "type": "string"
+                },
+                "cosign_runtime": {
+                    "type": "string"
+                },
+                "syft": {
+                    "type": "string"
+                },
+                "grype": {
+                    "type": "string"
+                },
+                "trivy_db": {
+                    "type": "string"
+                },
+                "grype_version": {
+                    "type": "string"
+                },
+                "syft_schema": {
+                    "type": "string"
+                }
+            }
+        },
+        "generated_at": {
+            "type": "string",
+            "format": "date-time"
+        }
+    },
+    "$defs": {
+        "artifactRef": {
+            "type": "object",
+            "required": [
+                "file",
+                "sha256"
+            ],
+            "properties": {
+                "file": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "pattern": "^[a-f0-9]{64}$"
+                }
+            }
+        }
+    }
+}

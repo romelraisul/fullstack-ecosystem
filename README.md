@@ -238,6 +238,7 @@ If unset, tracing/migrations are skipped gracefully.
 ## Placeholder Streak Governance
 
 The *Placeholder Streak* badge tracks how many consecutive governance runs produced only a
+
 ````markdown
 # fullstack-ecosystem
 AutoGen Multi-Agent WebUI - Enterprise API with Adaptive SLO & Analytics
@@ -247,6 +248,7 @@ AutoGen Multi-Agent WebUI - Enterprise API with Adaptive SLO & Analytics
  [Full README content was preserved from the original HEAD and merged with the concise header from origin/main.]
 
 ````
+
 - Dashboard section “Backend Latency Samples” renders server-side trends independent of browser refresh cadence.
 
 Prometheus metrics emitted by sampler (names stable, labels versioned via service name):
@@ -947,6 +949,8 @@ Troubleshooting:
 - Use `curl http://localhost:9090/api/v1/rules` to confirm rule groups loaded.
 - Check API logs for internal sampler activity.
 =======
+
 # fullstack-ecosystem
+
 AutoGen Multi-Agent WebUI - Enterprise API with Adaptive SLO &amp; Analytics
 >>>>>>> origin/main

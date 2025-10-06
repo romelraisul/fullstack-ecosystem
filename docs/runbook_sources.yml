@@ -1,0 +1,61 @@
+# Canonical sources for TL;DR generation
+sections:
+  core_commands:
+    heading: "Core Commands"
+    items:
+      - label: Start stack
+        value: "docker compose up -d"
+      - label: Stop stack
+        value: "docker compose down"
+      - label: Rebuild (deps changed)
+        value: "docker compose build --no-cache && docker compose up -d"
+      - label: Tail one service
+        value: "docker compose logs -f <service>"
+      - label: Reload Prometheus rules
+        value: "curl -X POST http://localhost:9090/prometheus/-/reload"
+  key_files:
+    heading: "Key Files"
+    items:
+      - Compose: docker-compose.yml
+      - Agent registry: autogen/agents/agent_registry.json
+      - Prometheus rules: docker/prometheus_rules.yml
+      - Gateway config: docker/gateway/nginx.conf
+      - Seeder: autogen/agent_traffic_seeder.py
+      - Dashboard JSON: autogen/grafana-dashboard-config.json
+  add_agent:
+    heading: "Add an Agent"
+    ordered: true
+    items:
+      - Create module in autogen/agents/
+      - Add service & nginx route
+      - Append thresholds entry to agent_registry.json
+      - Rebuild/start impacted services
+  dynamic_slo:
+    heading: "Dynamic SLO Thresholds"
+    items:
+      - Edit latency/error budget in agent_registry.json (hot-reload ≤60s)
+      - Gauges auto-update alerts (no rule edits)
+  synthetic_traffic:
+    heading: "Synthetic Traffic"
+    items:
+      - Adaptive seeder skips agents above organic RPS threshold
+      - Disable: docker compose stop autogen-agent-traffic-seeder
+  security_tracing:
+    heading: "Security & Tracing"
+    items:
+      - Basic Auth protects observability & agent paths
+      - X-Request-ID propagated/injected at gateway & logged by agents
+  troubleshoot:
+    heading: "Troubleshooting Fast Path"
+    ordered: true
+    items:
+      - Gateway 502 → check container & nginx route
+      - Missing metrics → curl /metrics & confirm scrape job
+      - High latency alert → inspect panels 11 & 14 (p95 vs thresholds)
+      - Burn alert → panels 12 & 13 (fast/slow error burn) + recent deploy diff
+  escalation:
+    heading: "Escalation Criteria"
+    items:
+      - Critical latency > threshold 10m
+      - Error rate > critical threshold 5m or burn fast >14
+      - Fleet error alert firing (systemic)

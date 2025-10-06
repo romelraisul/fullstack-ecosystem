@@ -1,0 +1,56 @@
+[
+    {
+        "id": "gov-core",
+        "title": "Governance core automation",
+        "weight": 5,
+        "status": "done"
+    },
+    {
+        "id": "webhook-contract",
+        "title": "Webhook contract + schema",
+        "weight": 3,
+        "status": "done"
+    },
+    {
+        "id": "artifact-signature",
+        "title": "Checksum/signature pipeline",
+        "weight": 2,
+        "status": "done"
+    },
+    {
+        "id": "recovery-events",
+        "title": "Recovery webhook events",
+        "weight": 2,
+        "status": "done"
+    },
+    {
+        "id": "sdk-hardening",
+        "title": "SDK publish validation tests",
+        "weight": 2,
+        "status": "done"
+    },
+    {
+        "id": "resilience-retries",
+        "title": "Resilience (retry/backoff for external fetches)",
+        "weight": 2,
+        "status": "done"
+    },
+    {
+        "id": "docs-architecture",
+        "title": "Architecture overview doc",
+        "weight": 2,
+        "status": "done"
+    },
+    {
+        "id": "security-scan-deep",
+        "title": "Deep dependency / SBOM scan integration",
+        "weight": 3,
+        "status": "done"
+    },
+    {
+        "id": "tests-coverage-gap",
+        "title": "Additional governance script edge tests",
+        "weight": 2,
+        "status": "done"
+    }
+]

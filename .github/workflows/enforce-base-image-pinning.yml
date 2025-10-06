@@ -1,0 +1,78 @@
+name: Enforce Base Image Pinning
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+permissions:
+    contents: read
+    security-events: write
+
+jobs:
+    enforce:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Detect unpinned base images
+              id: scan
+              run: |
+                  set -e
+                  echo 'Scanning Dockerfiles for unpinned FROM lines...' >&2
+                  find . -type f -name 'Dockerfile' -o -name '*Dockerfile*' | while read -r f; do
+                    from=$(grep -i '^FROM ' "$f" | head -n1 || true)
+                    [ -z "$from" ] && continue
+                    img=$(echo "$from" | awk '{print $2}')
+                    img=${img%% AS*}
+                    if ! echo "$img" | grep -q '@sha256:'; then
+                      echo "$f|$img" >> unpinned.txt
+                    fi
+                  done
+                  if [ -f unpinned.txt ]; then
+                    echo 'Found unpinned base images:' >&2
+                    cat unpinned.txt >&2
+                    echo "count=$(wc -l < unpinned.txt)" >> $GITHUB_OUTPUT
+                  else
+                    echo 'No unpinned base images found.' >&2
+                    echo "count=0" >> $GITHUB_OUTPUT
+                  fi
+            - name: Generate SARIF for unpinned images
+              if: ${{ steps.scan.outputs.count != '0' }}
+              run: |
+                  set -e
+                  echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Base Image Pin Enforcement","informationUri":"https://github.com/","rules":[{"id":"UNPINNED_BASE_IMAGE","name":"UnpinnedBaseImage","shortDescription":{"text":"Base image is not pinned to a digest"},"fullDescription":{"text":"Base images must be pinned to an immutable digest (FROM image@sha256:<digest>) to ensure supply chain integrity."},"defaultConfiguration":{"level":"error"},"help":{"text":"Update the FROM line to include the image digest, e.g. FROM ubuntu@sha256:<digest>."}}]}},"results":[]}]}' > unpinned-base-images.sarif
+                  if [ -f unpinned.txt ]; then
+                    results_json="[]"
+                    while IFS='|' read -r file image; do
+                      ln=$(grep -in "^FROM " "$file" | head -n1 | cut -d: -f1)
+                      [ -z "$ln" ] && ln=1
+                      entry=$(jq -n --arg f "$file" --arg img "$image" --argjson l $ln '{ruleId:"UNPINNED_BASE_IMAGE",level:"error",message:{text:("Base image \""+$img+"\" is not pinned to a digest")},locations:[{physicalLocation:{artifactLocation:{uri:$f},region:{startLine:$l}}}]}' )
+                      results_json=$(jq --argjson e "$entry" '. += [$e]' <<< "$results_json")
+                    done < unpinned.txt
+                    tmp=$(mktemp)
+                    jq --argjson r "$results_json" '.runs[0].results = $r' unpinned-base-images.sarif > "$tmp" && mv "$tmp" unpinned-base-images.sarif
+                  fi
+                  jq '.runs[0].results | length as $l | "Generated SARIF results=" + ($l|tostring)' unpinned-base-images.sarif >&2
+            - name: Upload SARIF
+              if: ${{ steps.scan.outputs.count != '0' }}
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: unpinned-base-images.sarif
+            - name: Fail if unpinned
+              if: ${{ steps.scan.outputs.count != '0' }}
+              run: |
+                  echo 'Failing due to unpinned base image(s).' >&2
+                  exit 1
+            - name: Summary
+              run: |
+                  echo '### Base Image Pinning Enforcement' >> $GITHUB_STEP_SUMMARY
+                  echo 'Unpinned count: ${{ steps.scan.outputs.count }}' >> $GITHUB_STEP_SUMMARY
+                  if [ -f unpinned.txt ]; then
+                    echo '' >> $GITHUB_STEP_SUMMARY
+                    echo '| Dockerfile | Image |' >> $GITHUB_STEP_SUMMARY
+                    echo '|-----------|-------|' >> $GITHUB_STEP_SUMMARY
+                    while IFS='|' read -r f img; do
+                      echo "| $f | $img |" >> $GITHUB_STEP_SUMMARY
+                    done < unpinned.txt
+                  fi

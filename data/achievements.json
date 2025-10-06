@@ -1,0 +1,28 @@
+[
+    {
+        "achievement": "Dynamic Achievement Ingestion",
+        "category": "Platform Evolution",
+        "description": "Switched achievements to file-backed dynamic loading with hot reload endpoint",
+        "revenue_impact": 150000000,
+        "completion_date": "2025-10-04T00:00:00Z",
+        "strategic_value": "Operational Flexibility",
+        "next_steps": [
+            "Add admin UI",
+            "Track history",
+            "Enable versioning"
+        ]
+    },
+    {
+        "achievement": "Resilient Agent Status",
+        "category": "Reliability",
+        "description": "Added retry/backoff, circuit breaker, and structured status reporting for agent health checks",
+        "revenue_impact": 275000000,
+        "completion_date": "2025-10-04T00:00:00Z",
+        "strategic_value": "Improved Observability",
+        "next_steps": [
+            "Expose metrics",
+            "Add SLIs",
+            "Integrate alerting"
+        ]
+    }
+]

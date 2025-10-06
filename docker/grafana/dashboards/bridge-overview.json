@@ -1,0 +1,250 @@
+{
+    "title": "Bridge Overview",
+    "uid": "bridge-overview",
+    "version": 2,
+    "templating": {
+        "list": [
+            {
+                "type": "query",
+                "name": "status",
+                "datasource": "Prometheus",
+                "query": "label_values(bridge_inputs_by_status, status)",
+                "includeAll": true,
+                "multi": true,
+                "refresh": 2
+            },
+            {
+                "type": "query",
+                "name": "owner",
+                "datasource": "Prometheus",
+                "query": "label_values(bridge_inputs_by_owner, owner)",
+                "includeAll": true,
+                "multi": true,
+                "refresh": 2
+            }
+        ]
+    },
+    "panels": [
+        {
+            "title": "Bridge Inputs (total)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "bridge_inputs_total"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Bridge Experiments (total)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "bridge_experiments_total"
+                }
+            ],
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Conversion rate (5m)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(rate(bridge_experiments_total[5m])) / clamp_min(sum(rate(bridge_inputs_total[5m])), 1e-9) * 100"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 20
+                            },
+                            {
+                                "color": "green",
+                                "value": 50
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 6,
+                "w": 24,
+                "h": 6
+            }
+        },
+        {
+            "title": "Inputs rate (1m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "rate(bridge_inputs_total[1m])"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 12,
+                "w": 12,
+                "h": 8
+            }
+        },
+        {
+            "title": "Experiments rate (1m)",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "rate(bridge_experiments_total[1m])"
+                }
+            ],
+            "gridPos": {
+                "x": 12,
+                "y": 12,
+                "w": 12,
+                "h": 8
+            }
+        },
+        {
+            "title": "Inputs by status",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "bridge_inputs_by_status{status=~\"$status\"}"
+                }
+            ],
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "gradient",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 20,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "Inputs by owner",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "bridge_inputs_by_owner{owner=~\"$owner\"}"
+                }
+            ],
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "gradient",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 28,
+                "w": 24,
+                "h": 8
+            }
+        },
+        {
+            "title": "New inputs (1h)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "increase(bridge_inputs_total[1h])"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 36,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Approved experiments (1h)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "increase(bridge_experiments_total[1h])"
+                }
+            ],
+            "gridPos": {
+                "x": 12,
+                "y": 36,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Active owners (count)",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "count(bridge_inputs_by_owner)"
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 42,
+                "w": 12,
+                "h": 6
+            }
+        },
+        {
+            "title": "Top owners by inputs",
+            "type": "table",
+            "targets": [
+                {
+                    "expr": "bridge_inputs_by_owner",
+                    "instant": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 48,
+                "w": 24,
+                "h": 8
+            }
+        }
+    ]
+}

@@ -1,0 +1,85 @@
+name: Prometheus Rules
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'docker/prometheus_rules.yml'
+      - 'docker/prometheus_rules.test.yml'
+      - '.github/workflows/promtool.yml'
+      - 'scripts/sync_alert_taxonomy.py'
+      - '../../alerts_taxonomy.json'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'docker/prometheus_rules.yml'
+      - 'docker/prometheus_rules.test.yml'
+      - 'scripts/sync_alert_taxonomy.py'
+      - '../../alerts_taxonomy.json'
+
+env:
+  PROMTOOL_VERSION: 2.55.1
+  PROMTOOL_CACHE_KEY: promtool-${{ env.PROMTOOL_VERSION }}-linux-amd64
+
+jobs:
+  promtool:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache promtool
+        uses: actions/cache@v4
+        with:
+          path: promtool-bin
+          key: ${{ env.PROMTOOL_CACHE_KEY }}
+
+      - name: Install promtool
+        run: |
+          if [ ! -f promtool-bin/promtool ]; then \
+            echo "Downloading promtool ${PROMTOOL_VERSION}"; \
+            curl -sSL -o /tmp/prom.tar.gz https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz; \
+            tar -xzf /tmp/prom.tar.gz -C /tmp; \
+            mkdir -p promtool-bin; \
+            mv /tmp/prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool promtool-bin/promtool; \
+          else \
+            echo "Using cached promtool"; \
+          fi; \
+          sudo cp promtool-bin/promtool /usr/local/bin/promtool; \
+          promtool --version
+
+      - name: Validate Prometheus rules
+        run: |
+          promtool check rules docker/prometheus_rules.yml
+
+      - name: Prometheus rule unit tests
+        run: |
+          promtool test rules docker/prometheus_rules.test.yml
+
+      - name: Validate alert taxonomy coverage
+        run: |
+          python3 fullstack-ecosystem/scripts/sync_alert_taxonomy.py \
+            --rules docker/prometheus_rules.yml \
+            --taxonomy ../alerts_taxonomy.json \
+            --check
+
+      - name: Lint taxonomy fields
+        run: |
+          python3 fullstack-ecosystem/scripts/sync_alert_taxonomy.py \
+            --taxonomy ../alerts_taxonomy.json \
+            --lint
+
+      - name: Generate taxonomy artifacts
+        run: |
+          python3 fullstack-ecosystem/scripts/sync_alert_taxonomy.py \
+            --taxonomy ../alerts_taxonomy.json \
+            --emit-markdown docs/alerts_taxonomy.generated.md \
+            --emit-jsonl docs/alerts_annotations.jsonl
+
+      - name: Upload taxonomy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-taxonomy-artifacts
+          path: |
+            docs/alerts_taxonomy.generated.md
+            docs/alerts_annotations.jsonl

@@ -1,0 +1,27 @@
+name: Security Notify (Deprecated Stub)
+
+# This stub exists to maintain backward compatibility while the real implementation
+# has moved to security-notify-clean.yml. Please update callers to use the new file.
+# Planned removal: in ~2 release cycles.
+
+on:
+    workflow_call:
+        inputs:
+            provider:
+                type: string
+                required: false
+        outputs:
+            posted:
+                description: Deprecated – always 'false' here. Use security-notify-clean.yml instead.
+                value: ${{ jobs.notify.outputs.posted }}
+
+jobs:
+    notify:
+        runs-on: ubuntu-latest
+        outputs:
+            posted: ${{ steps.stub.outputs.posted || 'false' }}
+        steps:
+            - id: stub
+                run: |
+                    echo "posted=false" >> $GITHUB_OUTPUT
+                    echo "Security Notify deprecated stub executed. Update to security-notify-clean.yml" >&2

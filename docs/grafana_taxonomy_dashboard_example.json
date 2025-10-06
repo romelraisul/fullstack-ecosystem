@@ -1,0 +1,208 @@
+{
+    "title": "Alert Taxonomy Governance (Example)",
+    "timezone": "browser",
+    "tags": [
+        "taxonomy",
+        "alerts",
+        "governance"
+    ],
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5m",
+    "panels": [
+        {
+            "type": "stat",
+            "title": "Total Alerts",
+            "id": 1,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^total_alerts$/"
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Deprecated %",
+            "id": 2,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^deprecated_percent$/"
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "30d Churn",
+            "id": 3,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^churn_30d$/"
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Stability %",
+            "id": 4,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^stability_percent$/"
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Runbook Complete %",
+            "id": 5,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^runbook_completeness_percent$/"
+                }
+            }
+        },
+        {
+            "type": "table",
+            "title": "Added / Removed (30d)",
+            "id": 6,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "showHeader": true,
+                "transform": "jsonata",
+                "jsonata": "{\n  'Added (30d)': $.added_30d,\n  'Removed (30d)': $.removed_30d\n}"
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Risk Churn (30d)",
+            "id": 7,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^risk_churn_30d$/"
+                }
+            }
+        },
+        {
+            "type": "stat",
+            "title": "Risk Stability %",
+            "id": 8,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics.json"
+                }
+            ],
+            "options": {
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "/^risk_stability_percent$/"
+                }
+            }
+        },
+        {
+            "type": "timeseries",
+            "title": "Churn 30d (History)",
+            "id": 9,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics-history.json"
+                }
+            ],
+            "options": {
+                "transform": "jsonata",
+                "jsonata": "history.{ 'time': $.generated_at, 'value': $.churn_30d }"
+            }
+        },
+        {
+            "type": "timeseries",
+            "title": "Risk Churn 30d (History)",
+            "id": 10,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics-history.json"
+                }
+            ],
+            "options": {
+                "transform": "jsonata",
+                "jsonata": "history.{ 'time': $.generated_at, 'value': $.risk_churn_30d }"
+            }
+        },
+        {
+            "type": "timeseries",
+            "title": "Runbook Completeness % (History)",
+            "id": 11,
+            "targets": [
+                {
+                    "refId": "A",
+                    "urlPath": "https://romel.github.io/fullstack-ecosystem/taxonomy-metrics-history.json"
+                }
+            ],
+            "options": {
+                "transform": "jsonata",
+                "jsonata": "history.{ 'time': $.generated_at, 'value': $.runbook_completeness_percent }"
+            }
+        }
+    ]
+}

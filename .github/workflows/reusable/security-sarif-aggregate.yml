@@ -1,0 +1,27 @@
+name: Security SARIF Aggregate
+on:
+    workflow_call:
+        outputs:
+            sarif-bundle:
+                description: Name of SARIF bundle artifact
+                value: sarif-bundle
+
+jobs:
+    aggregate:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Download scan artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: sbom-provenance
+                  path: ./scan
+              continue-on-error: true
+            - name: Aggregate SARIF (placeholder)
+              run: |
+                  tar -czf sarif-bundle.tgz ./scan/*.sarif 2>/dev/null || echo 'No SARIF to bundle'
+            - name: Upload SARIF bundle
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sarif-bundle
+                  path: sarif-bundle.tgz

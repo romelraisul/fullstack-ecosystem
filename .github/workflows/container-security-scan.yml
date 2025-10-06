@@ -3,16 +3,71 @@ name: Container Security Scan
 on:
   schedule:
     - cron: "17 2 * * *" # Nightly at 02:17 UTC (spread load)
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      vuln-threshold:
+        description: "Max allowed CRITICAL+HIGH vulns (blank = fail on >0)"
+        required: false
+        type: string
+      push_and_sign:
+        description: "Push built images to GHCR & sign with Cosign"
+        required: false
+        type: boolean
+        default: false
+      sign_attest_sbom:
+        description: "Generate & sign SBOM attestations (if push_and_sign)"
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      vuln-threshold:
+        description: "Max allowed CRITICAL+HIGH vulns (blank = fail on >0)"
+        required: false
+        type: string
+      push_and_sign:
+        description: "Push built images to GHCR & sign with Cosign"
+        required: false
+        type: boolean
+        default: false
+      sign_attest_sbom:
+        description: "Generate & sign SBOM attestations (if push_and_sign)"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      GHCR_PAT:
+        required: false
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'security/**'
-      - '.github/workflows/container-security-scan.yml'
+      - "security/**"
+      - ".github/workflows/container-security-scan.yml"
 
 permissions:
   contents: read
   security-events: write
+  id-token: write # Needed for keyless Cosign signing (OIDC)
+  packages: write # Needed if pushing images to GHCR
+
+# Ensure only one run per ref is active; cancel older runs when a new push/PR update occurs
+concurrency:
+  group: container-security-scan-${{ github.ref }}
+
+env:
+  # Tunable vulnerability thresholds (HIGH/CRITICAL combined currently enforced)
+  # Set to numeric values; default policy: fail on any high/critical
+  MAX_ALLOWED_CRITICAL: 0
+  MAX_ALLOWED_HIGH: 0
+  # Future: medium/low thresholds could be added without changing job logic
+  MAX_ALLOWED_TOTAL_HIGH_CRITICAL: 0
+  # Toggle optional features
+  ENABLE_COSIGN: false
+  VULN_SUMMARY_MODE: check-run # values: comment|check-run
+  DEPENDABOT_FAIL_ON: high # high|critical|none
+  REQUIRE_SBOM_SIGNATURES: true
+  REQUIRE_ORAS_SBOM_MEDIA_TYPES: true
+  STRICT_ORAS_INDEX_CHECK: true
 
 jobs:
   trivy-fs:
@@ -21,6 +76,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
       - name: Run Trivy FS (SARIF)
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -29,6 +91,24 @@ jobs:
           format: "sarif"
           output: "trivy-fs.sarif"
           severity: "CRITICAL,HIGH"
+      - name: Filter Trivy FS SARIF (optional)
+        if: ${{ env.TRIVY_FS_SUPPRESS_IDS != '' || env.TRIVY_FS_FILTER_JQ != '' }}
+        run: |
+          set -e
+          pip install --no-cache-dir jq >/dev/null 2>&1 || sudo apt-get update && sudo apt-get install -y jq
+          cp trivy-fs.sarif trivy-fs.raw.sarif
+          FILTER='.runs[].results'
+          if [ -n "${TRIVY_FS_SUPPRESS_IDS}" ]; then
+            # Comma-separated list of vulnerability IDs to drop
+            IFS=',' read -r -a SUP <<< "${TRIVY_FS_SUPPRESS_IDS}"
+            SUP_JSON=$(printf '%s\n' "${SUP[@]}" | jq -R . | jq -s .)
+            FILTER="${FILTER} |= map(select(.ruleId as $id | ($SUP_JSON | index($id)) | not))"
+          fi
+          if [ -n "${TRIVY_FS_FILTER_JQ}" ]; then
+            # Allow user-provided additional jq expression operating on root object ($this)
+            FILTER="${FILTER} | (${TRIVY_FS_FILTER_JQ})"
+          fi
+          jq "$FILTER" trivy-fs.raw.sarif > trivy-fs.sarif || { echo 'Filtering failed; restoring original'; mv trivy-fs.raw.sarif trivy-fs.sarif; }
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -37,7 +117,22 @@ jobs:
   build-and-scan:
     name: Build & Scan Key Images
     runs-on: ubuntu-latest
+    env:
+      # Placeholder environment variables so that expression evaluation finds keys; real values exported to GITHUB_ENV later
+      IMAGE_NAME: placeholder
+      IMAGE_SLUG: placeholder
+      GRYPE_VERSION: placeholder
+      ENABLE_REPRO_CHECK: "false"
+      FAIL_ON_REPRO_MISMATCH: "false"
+      ENABLE_IMAGE_PUSH: "false"
+      REQUIRE_ATTESTATION_SUBJECT_MATCH: "false"
+      ENABLE_ORAS_ATTACH: "false"
+      ENABLE_COSIGN: "false"
+      ENABLE_SBOM_SIGNING: "false"
+      ENABLE_POLICIES: "false"
+      SIGN_ORAS_INDEX: "false"
     strategy:
+      fail-fast: false
       matrix:
         dockerfile:
           - Dockerfile.orchestrator
@@ -46,21 +141,250 @@ jobs:
           - autogen/backend/Dockerfile.prod
           - autogen/backend/Dockerfile.production
           - autogen/Dockerfile.topics
+        arch: [linux/amd64, linux/arm64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ github.run_id }}
+          restore-keys: |
+            trivy-${{ runner.os }}-
+      - name: Cache Grype DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/grype
+          key: grype-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ github.run_id }}
+          restore-keys: |
+            grype-${{ runner.os }}-
+      - name: Load Security Settings
+        run: |
+          set -e
+          if [ -f security/security_settings.json ]; then
+            echo "Loading security_settings.json"
+            cat security/security_settings.json
+            MAXC=$(jq -r '.thresholds.MAX_ALLOWED_CRITICAL' security/security_settings.json)
+            MAXH=$(jq -r '.thresholds.MAX_ALLOWED_HIGH' security/security_settings.json)
+            MAXT=$(jq -r '.thresholds.MAX_ALLOWED_TOTAL_HIGH_CRITICAL' security/security_settings.json)
+            EC=$(jq -r '.features.enableCosign' security/security_settings.json)
+            EI=$(jq -r '.features.enableImagePush' security/security_settings.json)
+            ES=$(jq -r '.features.enableSbomSigning' security/security_settings.json)
+            EP=$(jq -r '.features.enablePolicies' security/security_settings.json)
+            RB=$(jq -r '.policy.requireBundles' security/security_settings.json)
+            RS=$(jq -r '.policy.requireSbomSignatures' security/security_settings.json)
+            RA=$(jq -r '.policy.requireAttestationSubjectMatch' security/security_settings.json)
+            RC=$(jq -r '.features.enableReproducibilityCheck // false' security/security_settings.json)
+            ORAS_ATTACH=$(jq -r '.features.enableOrasAttach // false' security/security_settings.json)
+            FRM=$(jq -r '.policy.failOnReproMismatch // false' security/security_settings.json)
+            ROS=$(jq -r '.policy.requireOrasSbomMediaTypes // false' security/security_settings.json)
+            SOI=$(jq -r '.policy.strictOrasIndexCheck // false' security/security_settings.json)
+            SIDX=$(jq -r '.policy.signOrasIndex // false' security/security_settings.json)
+            echo "MAX_ALLOWED_CRITICAL=$MAXC" >> $GITHUB_ENV
+            echo "MAX_ALLOWED_HIGH=$MAXH" >> $GITHUB_ENV
+            echo "MAX_ALLOWED_TOTAL_HIGH_CRITICAL=$MAXT" >> $GITHUB_ENV
+            echo "ENABLE_COSIGN=$EC" >> $GITHUB_ENV
+            echo "ENABLE_IMAGE_PUSH=$EI" >> $GITHUB_ENV
+            echo "ENABLE_SBOM_SIGNING=$ES" >> $GITHUB_ENV
+            echo "ENABLE_POLICIES=$EP" >> $GITHUB_ENV
+            echo "REQUIRE_BUNDLES=$RB" >> $GITHUB_ENV
+            echo "REQUIRE_SBOM_SIGNATURES=$RS" >> $GITHUB_ENV
+            echo "REQUIRE_ATTESTATION_SUBJECT_MATCH=$RA" >> $GITHUB_ENV
+            echo "ENABLE_REPRO_CHECK=$RC" >> $GITHUB_ENV
+            echo "ENABLE_ORAS_ATTACH=$ORAS_ATTACH" >> $GITHUB_ENV
+            echo "FAIL_ON_REPRO_MISMATCH=$FRM" >> $GITHUB_ENV
+            echo "REQUIRE_ORAS_SBOM_MEDIA_TYPES=$ROS" >> $GITHUB_ENV
+            echo "STRICT_ORAS_INDEX_CHECK=$SOI" >> $GITHUB_ENV
+            echo "SIGN_ORAS_INDEX=$SIDX" >> $GITHUB_ENV
+          else
+            echo "security/security_settings.json missing; using default env values" >&2
+          fi
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build image
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/.buildx-cache
+            /tmp/.buildx-cache-new
+          key: buildx-${{ runner.os }}-${{ matrix.dockerfile }}-${{ github.sha }}
+          restore-keys: |
+            buildx-${{ runner.os }}-${{ matrix.dockerfile }}-
+            buildx-${{ runner.os }}-
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ matrix.dockerfile }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-${{ matrix.dockerfile }}-
+            trivy-db-${{ runner.os }}-
+      - name: Build image (multi-arch)
         run: |
-          IMAGE=localscan:${{ matrix.dockerfile//\//- }}
-          docker build --build-arg GIT_COMMIT=${{ github.sha }} --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -f ${{ matrix.dockerfile }} -t $IMAGE . || exit 1
+          SLUG=$(echo "${{ matrix.dockerfile }}" | tr '/' '-')
+          PLATFORM="${{ matrix.arch }}"
+          IMAGE=localscan:${SLUG}-${PLATFORM##*/}
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          docker buildx build \
+            --platform $PLATFORM \
+            --build-arg GIT_COMMIT=${{ github.sha }} \
+            --build-arg BUILD_DATE=$BUILD_DATE \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            -f ${{ matrix.dockerfile }} -t $IMAGE --load . || exit 1
           echo "IMAGE_NAME=$IMAGE" >> $GITHUB_ENV
-          echo "IMAGE_SLUG=${{ matrix.dockerfile//\//- }}" >> $GITHUB_ENV
+          echo "IMAGE_SLUG=${SLUG}-${PLATFORM##*/}" >> $GITHUB_ENV
+          printf "GIT_COMMIT=%s\nBUILD_DATE=%s\nPLATFORM=%s\n" "${{ github.sha }}" "$BUILD_DATE" "$PLATFORM" > build-metadata/build-args.txt
+          rm -rf /tmp/.buildx-cache || true
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache || true
+      - name: Login to GHCR (if pushing)
+        if: ${{ inputs.push_and_sign == true }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag image for GHCR
+        if: ${{ inputs.push_and_sign == true }}
+        run: |
+          GHCR_IMAGE=ghcr.io/${{ github.repository }}:${IMAGE_SLUG}
+          docker tag ${IMAGE_NAME} ${GHCR_IMAGE}
+          echo "GHCR_IMAGE=${GHCR_IMAGE}" >> $GITHUB_ENV
+          echo "Signed tag will include per-arch suffix already in IMAGE_SLUG"
+      - name: Push image (GHCR)
+        if: ${{ inputs.push_and_sign == true }}
+        run: |
+          docker push ${GHCR_IMAGE}
+      - name: Install Cosign
+        if: ${{ inputs.push_and_sign == true }}
+        run: |
+          COSIGN_VERSION=$(curl -s https://api.github.com/repos/sigstore/cosign/releases/latest | jq -r '.tag_name')
+          curl -sSL -o cosign.tgz https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64
+          install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign || true
+          cosign version || true
+      - name: Sign Image (keyless)
+        if: ${{ inputs.push_and_sign == true }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes ${GHCR_IMAGE}
+          echo "Signed ${GHCR_IMAGE} (single-arch). Consider manifest create+push for multi-arch aggregation."
+      - name: Record Pushed Image Digest
+        if: ${{ inputs.push_and_sign == true }}
+        run: |
+          set -e
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${GHCR_IMAGE} 2>/dev/null | grep '@sha256:' || true)
+          if [ -n "$DIGEST" ]; then
+            echo "$DIGEST" > digest-${IMAGE_SLUG}.txt
+            echo "Captured pushed digest: $DIGEST"
+          else
+            echo "No pushed digest found for ${GHCR_IMAGE}" >&2
+          fi
+      - name: Upload Digest Artifact
+        if: ${{ inputs.push_and_sign == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ env.IMAGE_SLUG }}
+          path: digest-${{ env.IMAGE_SLUG }}.txt
+      - name: Attest SBOM (CycloneDX)
+        if: ${{ inputs.push_and_sign == true && inputs.sign_attest_sbom == true }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          if [ -f sbom-${IMAGE_SLUG}.cdx.json ]; then
+            cosign attest --yes --predicate sbom-${IMAGE_SLUG}.cdx.json --type cyclonedx ${GHCR_IMAGE}
+          fi
+      - name: Collect Build Inputs Metadata
+        run: |
+          set -e
+          DF=${{ matrix.dockerfile }}
+          if [ ! -f "$DF" ]; then echo "Dockerfile $DF not found" >&2; exit 1; fi
+          DF_HASH=$(sha256sum "$DF" | awk '{print $1}')
+          echo "DOCKERFILE_HASH=$DF_HASH" >> $GITHUB_ENV
+          echo "MATRIX_DOCKERFILE=$DF" >> $GITHUB_ENV
+          # Extract base images (lines starting with FROM, ignoring ARG expansion lines)
+          BASES=$(grep -i '^FROM ' "$DF" | awk '{print $2}' | sed 's/\\r//' | sort -u)
+          mkdir -p build-metadata
+          echo "$BASES" > build-metadata/base-images.txt
+          # Attempt to resolve digests for each base (pull quietly)
+          jq_base_array='[]'
+          jq_config_array='[]'
+          while read -r img; do
+            [ -n "$img" ] || continue
+            if echo "$img" | grep -q '^\-'; then continue; fi
+            docker pull -q "$img" || true
+            digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$img" 2>/dev/null || true)
+            config_hash=$(docker inspect --format='{{.Id}}' "$img" 2>/dev/null | sed 's/^sha256://')
+            if [ -n "$digest" ]; then
+              repo=$(echo "$digest" | cut -d'@' -f1)
+              dg=$(echo "$digest" | cut -d'@' -f2)
+              jq_base_array=$(echo "$jq_base_array" | jq --arg n "$repo" --arg d "$dg" '. + [{"name":$n, "digest":{"sha256": ($d | sub("sha256:";""))}}]')
+            else
+              jq_base_array=$(echo "$jq_base_array" | jq --arg n "$img" '. + [{"name":$n}]')
+            fi
+            if [ -n "$config_hash" ]; then
+              jq_config_array=$(echo "$jq_config_array" | jq --arg n "$img" --arg h "$config_hash" '. + [{"name":$n, "config_digest":{"sha256":$h}}]')
+            fi
+          done < build-metadata/base-images.txt
+          # Hash common dependency lock / manifest files if present
+          lock_files="requirements.txt package-lock.json yarn.lock pnpm-lock.yaml poetry.lock Cargo.lock go.sum Gemfile.lock"
+          jq_lock_array='[]'
+            for lf in $lock_files; do
+              if [ -f "$lf" ]; then
+                h=$(sha256sum "$lf" | awk '{print $1}')
+                jq_lock_array=$(echo "$jq_lock_array" | jq --arg n "$lf" --arg h "$h" '. + [{"name":$n, "digest":{"sha256":$h}}]')
+              fi
+            done
+          cat > build-metadata/resolved-deps.json <<EOF
+          {
+            "dockerfile": {"path": "$DF", "digest": {"sha256": "$DF_HASH"}},
+            "baseImages": $jq_base_array,
+            "lockFiles": $jq_lock_array,
+            "baseImageConfigs": $jq_config_array
+          }
+          EOF
+          echo "Resolved dependency metadata:"; cat build-metadata/resolved-deps.json
+      - name: Reproducibility Rebuild (Optional)
+        if: ${{ env.ENABLE_REPRO_CHECK == 'true' }}
+        run: |
+          set -e
+          echo "Performing reproducibility rebuild"
+          docker build -f ${{ matrix.dockerfile }} -t repro-${IMAGE_SLUG} . >/dev/null 2>&1 || { echo "Rebuild failed" >&2; exit 1; }
+          ORIG=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_NAME" 2>/dev/null || true)
+          REPRO=$(docker inspect --format='{{index .RepoDigests 0}}' repro-${IMAGE_SLUG} 2>/dev/null || true)
+          echo "Original digest: $ORIG"
+            echo "Rebuild digest:  $REPRO"
+          MATCH="false"
+          if [ -n "$ORIG" ] && [ -n "$REPRO" ] && [ "$ORIG" = "$REPRO" ]; then MATCH="true"; fi
+          echo "REPRO_MATCH=$MATCH" >> $GITHUB_ENV
+          if [ "$MATCH" = "true" ]; then
+            echo "REPRODUCIBILITY_MATCH_DIGEST=$ORIG" >> $GITHUB_ENV
+          fi
+      # (Removed legacy optional push block superseded by new push_and_sign logic)
+      - name: Compute Image Digest
+        run: |
+          set -e
+          # Save image to temp tar and compute sha256 of config + manifest to approximate digest when not pushed.
+          # Simpler: use docker image inspect RepoDigests if present (may be empty for unpushed tags).
+          DIGEST=$(docker image inspect --format='{{index .RepoDigests 0}}' "$IMAGE_NAME" 2>/dev/null || true)
+          if [ -z "$DIGEST" ] || ! echo "$DIGEST" | grep -q '@sha256:'; then
+            # Fallback: export image and hash tarball (not a canonical OCI digest but useful for provenance linkage).
+            docker save "$IMAGE_NAME" -o image.tar
+            TAR_DIGEST=sha256:$(sha256sum image.tar | awk '{print $1}')
+            DIGEST="$IMAGE_NAME@$TAR_DIGEST"
+          fi
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "Computed image digest (approx if not pushed): $DIGEST"
+          if [ "${ENABLE_IMAGE_PUSH}" = "true" ] && [ -n "${PUSHED_IMAGE}" ]; then
+            echo "Final IMAGE_REFERENCE=${PUSHED_IMAGE}" >> $GITHUB_ENV
+          else
+            echo "Final IMAGE_REFERENCE=$IMAGE_NAME" >> $GITHUB_ENV
+          fi
       - name: Trivy Image Scan (table)
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -76,6 +400,36 @@ jobs:
           output: trivy-image.sarif
           ignore-unfixed: true
           severity: "CRITICAL,HIGH"
+      - name: Enrich Trivy SARIF (layer mapping)
+        run: |
+          set -e
+          if [ ! -f trivy-image.sarif ]; then echo 'No SARIF to enrich'; exit 0; fi
+          python security/enrich_trivy_sarif.py --sarif trivy-image.sarif --image "$IMAGE_NAME" || echo "[enrich] skipped"
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype version || true
+          echo "GRYPE_VERSION=$(grype version 2>/dev/null | head -n1 | awk '{print $2}')" >> $GITHUB_ENV
+      - name: Cache Grype DB (anchore provider)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/grype/db
+          key: grype-db-${{ runner.os }}-${{ env.GRYPE_VERSION }}
+          restore-keys: |
+            grype-db-${{ runner.os }}-
+      - name: Grype Image Scan (table)
+        run: |
+          grype ${{ env.IMAGE_NAME }} -o table --fail-on critical || true
+      - name: Grype Image Scan (JSON)
+        run: |
+          grype ${{ env.IMAGE_NAME }} -o json > grype-image.json || true
+      - name: Grype Image Scan (SARIF)
+        run: |
+          grype ${{ env.IMAGE_NAME }} -o sarif > grype-image.sarif || true
+      - name: Upload Grype SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype-image.sarif
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -83,12 +437,448 @@ jobs:
       - name: Generate SBOM (CycloneDX JSON)
         run: |
           curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          echo "TRIVY_VERSION=$(trivy --version 2>/dev/null | head -n1 | awk '{print $2}')" >> $GITHUB_ENV
           trivy image --format cyclonedx --output sbom-${IMAGE_SLUG}.cdx.json "$IMAGE_NAME" || true
       - name: Generate SBOM (SPDX JSON)
         run: |
           if command -v trivy >/dev/null 2>&1; then
             trivy image --format spdx-json --output sbom-${IMAGE_SLUG}.spdx.json "$IMAGE_NAME" || true
           fi
+      - name: Cosign Attach SBOMs
+        if: ${{ inputs.push_and_sign == true && inputs.sign_attest_sbom == true }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -e
+          REF="ghcr.io/${{ github.repository }}:${IMAGE_SLUG}"
+          for f in sbom-${IMAGE_SLUG}.cdx.json sbom-${IMAGE_SLUG}.spdx.json syft-${IMAGE_SLUG}.cyclonedx.json syft-${IMAGE_SLUG}.spdx.json; do
+            [ -f "$f" ] || continue
+            echo "Attaching SBOM $f to $REF"
+            cosign attach sbom --yes --sbom "$f" "$REF" || echo "Attach failed (non-fatal) for $f" >&2
+          done
+          # List ref to show attached artifacts (best-effort)
+          cosign triangulate $REF || true
+      - name: Upload SBOM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sboms-${{ env.IMAGE_SLUG }}
+          path: |
+            sbom-${{ env.IMAGE_SLUG }}.cdx.json
+            sbom-${{ env.IMAGE_SLUG }}.spdx.json
+            syft-${{ env.IMAGE_SLUG }}.cyclonedx.json
+            syft-${{ env.IMAGE_SLUG }}.spdx.json
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft version || true
+      - name: Syft SBOM (CycloneDX JSON)
+        run: |
+          syft $IMAGE_NAME -o cyclonedx-json > syft-${IMAGE_SLUG}.cyclonedx.json || true
+      - name: Syft SBOM (SPDX JSON)
+        run: |
+          syft $IMAGE_NAME -o spdx-json > syft-${IMAGE_SLUG}.spdx.json || true
+      - name: SBOM Diff (CycloneDX)
+        run: |
+          python security/sbom_diff.py --current sbom-${IMAGE_SLUG}.cdx.json --previous security/sbom-baselines/${IMAGE_SLUG}.cdx.json --output sbom-diff-${IMAGE_SLUG}.json || true
+      - name: Generate Provenance (pre-SLSA stub)
+        run: |
+          python security/generate_provenance.py --image-slug ${IMAGE_SLUG} --commit ${GITHUB_SHA} \
+            --cyclonedx sbom-${IMAGE_SLUG}.cdx.json --spdx sbom-${IMAGE_SLUG}.spdx.json \
+            --diff sbom-diff-${IMAGE_SLUG}.json --output provenance-${IMAGE_SLUG}.json \
+            --build-command "docker build -f ${{ matrix.dockerfile }} ." \
+            --build-args-file build-metadata/build-args.txt \
+            --trivy-version ${TRIVY_VERSION} --grype-version ${GRYPE_VERSION} --write-signature || true
+      - name: Generate SLSA v1 Attestation
+        run: |
+          set -e
+          P="provenance-${IMAGE_SLUG}.json"
+          if [ ! -f "$P" ]; then
+            echo "Provenance file $P missing; cannot create SLSA attestation" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os, json, datetime, subprocess, re
+          slug=os.environ.get('IMAGE_SLUG','image')
+          image_ref=os.environ.get('IMAGE_REFERENCE') or os.environ.get('IMAGE_NAME','image')
+          image_digest=os.environ.get('IMAGE_DIGEST','')
+          # Extract sha256 digest if present (format ref@sha256:<hash>)
+          sha256=''
+          if '@sha256:' in image_digest:
+              sha256=image_digest.split('@sha256:')[-1]
+          elif image_digest.startswith('sha256:'):
+              sha256=image_digest.split('sha256:')[-1]
+          # Basic validation; we still emit attestation even if digest missing, but policy may fail later.
+          gri=os.environ.get('GITHUB_RUN_ID')
+          start=os.environ.get('GITHUB_RUN_STARTED_AT') or datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+          finish=datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+          commit=os.environ.get('GITHUB_SHA')
+          repo=os.environ.get('GITHUB_REPOSITORY','')
+          dockerfile=os.environ.get('MATRIX_DOCKERFILE') or os.environ.get('matrix.dockerfile')
+          def cmd(c):
+              try:
+                  return subprocess.check_output(c,shell=True,text=True).strip()
+              except Exception:
+                  return ''
+          buildx_v=cmd("docker buildx version 2>/dev/null | head -n1")
+          docker_v=cmd("docker version --format '{{.Server.Version}}' 2>/dev/null") or cmd("docker --version")
+          trivy_v=os.environ.get('TRIVY_VERSION','')
+          grype_v=os.environ.get('GRYPE_VERSION','')
+          repro_match=os.environ.get('REPRO_MATCH','')
+          repro_digest=os.environ.get('REPRODUCIBILITY_MATCH_DIGEST','')
+          # Compute a simple policy bundle hash (sorted concatenation of all .rego files)
+          import glob,hashlib
+          policy_hash=''
+          try:
+              rego_files=sorted(glob.glob('security/policy/*.rego'))
+              if rego_files:
+                  h=hashlib.sha256()
+                  for rf in rego_files:
+                      with open(rf,'rb') as f:
+                          h.update(f.read())
+                  policy_hash=h.hexdigest()
+          except Exception:
+              policy_hash=''
+          # Construct SLSA v1 predicate
+          predicate={
+              "buildDefinition":{
+                  "buildType":"https://github.com/Attestations/docker-build@v1",
+                  "externalParameters":{
+                      "dockerfile": dockerfile,
+                      "repository": repo
+                  },
+                  "internalParameters":{
+                      "commit": commit
+                  },
+                  "resolvedDependencies": []
+              },
+              "runDetails":{
+                  "builder": {"id": "https://github.com/actions"},
+                  "metadata": {
+                      "invocationId": gri,
+                      "startedOn": start,
+                      "finishedOn": finish
+                  },
+                  "byproducts":[
+                      {"name":"trivy_version","value":trivy_v},
+                      {"name":"grype_version","value":grype_v},
+                      {"name":"buildx_version","value":buildx_v},
+                      {"name":"docker_version","value":docker_v},
+                      {"name":"reproducibility_match","value":repro_match},
+                      {"name":"reproducibility_digest","value":repro_digest},
+                      {"name":"policy_version","value":policy_hash}
+                  ]
+              }
+          }
+          att={
+              "_type":"https://in-toto.io/Statement/v0.1",
+              "predicateType":"https://slsa.dev/provenance/v1",
+              "subject": ([{"name": image_ref, "digest": {"sha256": sha256}}] if sha256 else []),
+              "predicate": predicate
+          }
+          out_file=f"attestation-{slug}.json"
+          with open(out_file,'w') as f:
+              json.dump(att,f,indent=2)
+          print(f"Generated SLSA v1 attestation {out_file}; subject count={len(att['subject'])}")
+          PY
+      - name: Subject Digest Policy Check
+        if: ${{ env.REQUIRE_ATTESTATION_SUBJECT_MATCH == 'true' }}
+        run: |
+          set -e
+          FILE="attestation-${IMAGE_SLUG}.json"
+          if [ ! -f "$FILE" ]; then echo "Missing attestation file $FILE" >&2; exit 1; fi
+          if ! grep -q '"subject"' "$FILE"; then echo "Attestation missing subject array" >&2; exit 1; fi
+          DIGEST_FIELD=$(jq -r '.subject[0].digest.sha256 // empty' "$FILE")
+          if [ -z "$DIGEST_FIELD" ]; then echo "No subject digest present in attestation" >&2; exit 1; fi
+          EXPECTED=$(echo "$IMAGE_DIGEST" | sed -e 's/.*sha256://')
+          if [ -z "$EXPECTED" ]; then echo "Workflow IMAGE_DIGEST missing sha256 portion" >&2; exit 1; fi
+          if [ "$DIGEST_FIELD" != "$EXPECTED" ]; then
+            echo "Subject digest mismatch: attestation=$DIGEST_FIELD expected=$EXPECTED" >&2
+            exit 1
+          fi
+          echo "Subject digest policy satisfied ($DIGEST_FIELD)"
+      - name: Install Cosign
+        if: ${{ env.ENABLE_COSIGN == 'true' }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/sigstore/cosign/main/install.sh | sh -s -- -b /usr/local/bin
+          cosign version || true
+      - name: Cosign Keyless Sign Provenance
+        if: ${{ env.ENABLE_COSIGN == 'true' }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -e
+          # If image was pushed, sign the image manifest directly for stronger guarantees
+          if [ "${ENABLE_IMAGE_PUSH}" = "true" ] && [ -n "${PUSHED_IMAGE}" ]; then
+            echo "Signing pushed image ${PUSHED_IMAGE}"
+            cosign sign --yes --bundle image-${IMAGE_SLUG}.bundle.json ${PUSHED_IMAGE} || { echo "Image signing failed" >&2; exit 1; }
+            echo "Generating image attestation (sbom + build)"
+            cosign attest --yes --bundle image-${IMAGE_SLUG}-attest.bundle.json --predicate provenance-${IMAGE_SLUG}.json --type slsaprovenance ${PUSHED_IMAGE} || echo "Image attest (provenance predicate) optional failure" >&2
+          fi
+          for p in provenance-${IMAGE_SLUG}.json; do
+            [ -f "$p" ] || continue
+            echo "Signing $p with keyless cosign";
+            cosign sign-blob --yes --bundle "$p.bundle.json" "$p" > "$p.sig" 2>"$p.sig.log" || { echo "Cosign signing failed" >&2; exit 1; }
+            # Extract Rekor log index if present
+            grep -i 'tlog\|rekor' "$p.sig.log" | grep -Eo 'index: [0-9]+' | awk '{print $2}' > "$p.sig.tlog-index" || true
+            if [ -s "$p.sig.tlog-index" ]; then echo "Rekor index for $p: $(cat $p.sig.tlog-index)"; fi
+          done
+          if [ -f attestation-${IMAGE_SLUG}.json ]; then
+            cosign sign-blob --yes --bundle attestation-${IMAGE_SLUG}.json.bundle.json attestation-${IMAGE_SLUG}.json > attestation-${IMAGE_SLUG}.json.sig 2> attestation-${IMAGE_SLUG}.json.sig.log || { echo "Cosign signing attestation failed" >&2; exit 1; }
+            grep -i 'tlog\|rekor' attestation-${IMAGE_SLUG}.json.sig.log | grep -Eo 'index: [0-9]+' | awk '{print $2}' > attestation-${IMAGE_SLUG}.json.sig.tlog-index || true
+          fi
+      - name: ORAS Attach Provenance & Attestation
+        if: ${{ env.ENABLE_ORAS_ATTACH == 'true' && env.ENABLE_IMAGE_PUSH == 'true' }}
+        run: |
+          set -e
+          if [ -z "$PUSHED_IMAGE" ]; then echo "Image not pushed; cannot attach ORAS artifacts" >&2; exit 1; fi
+          ORAS_VERSION=1.2.0
+          echo "Installing ORAS $ORAS_VERSION"
+          curl -sSL -o /tmp/oras.tar.gz https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          tar -xzf /tmp/oras.tar.gz -C /usr/local/bin oras
+          oras version || true
+          REF=$PUSHED_IMAGE
+          prov=provenance-${IMAGE_SLUG}.json
+          att=attestation-${IMAGE_SLUG}.json
+          [ -f "$prov" ] || { echo "Missing $prov" >&2; exit 1; }
+          [ -f "$att" ] || { echo "Missing $att" >&2; exit 1; }
+          MT_PROV=application/vnd.slsa.provenance+json
+          MT_ATT=application/vnd.in-toto+json
+          MT_CDX=application/vnd.cyclonedx+json
+          MT_SPDX=application/spdx+json
+          echo "Attaching provenance artifact"
+          oras attach $REF --artifact-type $MT_PROV $prov
+          echo "Attaching attestation artifact"
+            oras attach $REF --artifact-type $MT_ATT $att
+          # Attach SBOMs if present
+          if [ -f sbom-${IMAGE_SLUG}.cdx.json ]; then
+            echo "Attaching CycloneDX SBOM"
+            oras attach $REF --artifact-type $MT_CDX sbom-${IMAGE_SLUG}.cdx.json || echo "WARN: failed to attach CycloneDX SBOM" >&2
+          fi
+          if [ -f sbom-${IMAGE_SLUG}.spdx.json ]; then
+            echo "Attaching SPDX SBOM"
+            oras attach $REF --artifact-type $MT_SPDX sbom-${IMAGE_SLUG}.spdx.json || echo "WARN: failed to attach SPDX SBOM" >&2
+          fi
+          echo "Discovering attached artifacts"
+          oras discover -o json $REF > oras-discover-${IMAGE_SLUG}.json || true
+          jq '..|objects|select(has("mediaType"))|{mediaType,digest}' oras-discover-${IMAGE_SLUG}.json > oras-attachments-${IMAGE_SLUG}.json || true
+          # Build a local index mapping mediaType -> local file + sha256
+          cat > build-index.py <<'PY'
+          import json,hashlib,os
+          slug=os.environ.get('IMAGE_SLUG','image')
+          pairs=[
+           (f'provenance-{slug}.json','application/vnd.slsa.provenance+json'),
+           (f'attestation-{slug}.json','application/vnd.in-toto+json'),
+           (f'sbom-{slug}.cdx.json','application/vnd.cyclonedx+json'),
+           (f'sbom-{slug}.spdx.json','application/spdx+json'),
+          ]
+          entries=[]
+          for path,mt in pairs:
+            if os.path.isfile(path):
+              h=hashlib.sha256()
+              with open(path,'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                  h.update(chunk)
+              entries.append({'file': path,'mediaType': mt,'sha256': h.hexdigest()})
+          with open(f'oras-index-{slug}.json','w') as f:
+            json.dump({'artifacts': entries},f,indent=2)
+          print('ORAS index entries:',len(entries))
+          PY
+          python build-index.py
+          echo "ORAS discovery saved to oras-discover-${IMAGE_SLUG}.json"
+          # Optionally sign the ORAS index for downstream integrity verification
+          if [ "${SIGN_ORAS_INDEX}" = "true" ] && [ "${ENABLE_COSIGN}" = "true" ]; then
+            if command -v cosign >/dev/null 2>&1; then
+              echo "Signing ORAS index oras-index-${IMAGE_SLUG}.json"
+              cosign sign-blob --yes --bundle oras-index-${IMAGE_SLUG}.json.bundle.json oras-index-${IMAGE_SLUG}.json > oras-index-${IMAGE_SLUG}.json.sig 2> oras-index-${IMAGE_SLUG}.json.sig.log || echo "WARN: failed to sign ORAS index" >&2
+              grep -i 'tlog\|rekor' oras-index-${IMAGE_SLUG}.json.sig.log | grep -Eo 'index: [0-9]+' | awk '{print $2}' > oras-index-${IMAGE_SLUG}.json.sig.tlog-index || true
+            else
+              echo "cosign not available in this step; skipping ORAS index signing" >&2
+            fi
+          fi
+          # Produce a diff summary comparing discovery digests to index entries
+          if [ -f "oras-index-${IMAGE_SLUG}.json" ] && [ -f "oras-discover-${IMAGE_SLUG}.json" ]; then
+            python - <<'PY'
+          import json, os
+          slug = os.environ.get("IMAGE_SLUG","image")
+          idx = json.load(open(f"oras-index-{slug}.json"))
+          disc = json.load(open(f"oras-discover-{slug}.json"))
+
+          def walk(o):
+            if isinstance(o, dict):
+              yield o
+              for v in o.values():
+                yield from walk(v)
+            elif isinstance(o, list):
+              for v in o:
+                yield from walk(v)
+
+          disc_entries = []
+          for obj in walk(disc):
+            if all(k in obj for k in ("mediaType","digest")):
+              dig = obj["digest"]
+              if dig.startswith("sha256:"): dig = dig.split(":",1)[1]
+              disc_entries.append((obj["mediaType"], dig))
+
+          disc_map = {}
+          for mt,dg in disc_entries:
+            disc_map.setdefault(mt,set()).add(dg)
+
+          index_map = {a["mediaType"]: a["sha256"] for a in idx.get("artifacts", []) if a.get("mediaType") and a.get("sha256")}
+
+          mismatches = []
+          missing_in_discovery = []
+          for mt, sha in index_map.items():
+            digs = disc_map.get(mt)
+            if not digs:
+              missing_in_discovery.append({"mediaType": mt, "indexSha": sha})
+            elif sha not in digs:
+              mismatches.append({"mediaType": mt, "indexSha": sha, "discoverySample": list(digs)[:5]})
+
+          extra_discovery = []
+          for mt, digs in disc_map.items():
+            if mt not in index_map:
+              extra_discovery.append({"mediaType": mt, "discoveryCount": len(digs)})
+
+          report = {
+            "slug": slug,
+            "summary": {
+              "indexArtifacts": len(idx.get("artifacts", [])),
+              "discoveryMediaTypes": len(disc_map),
+              "mismatchCount": len(mismatches),
+              "missingDiscoveryCount": len(missing_in_discovery),
+              "extraDiscoveryMediaTypes": len(extra_discovery)
+            },
+            "mismatches": mismatches,
+            "missingInDiscovery": missing_in_discovery,
+            "extraDiscovery": extra_discovery
+          }
+          json.dump(report, open(f"oras-index-diff-{slug}.json","w"), indent=2)
+          print("Generated oras-index-diff-"+slug+".json")
+            PY
+          fi
+      - name: Cosign Sign SBOMs
+        if: ${{ env.ENABLE_COSIGN == 'true' && env.ENABLE_SBOM_SIGNING == 'true' }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -e
+          for sbom in sbom-${IMAGE_SLUG}.cdx.json sbom-${IMAGE_SLUG}.spdx.json; do
+            [ -f "$sbom" ] || { echo "Missing SBOM $sbom" >&2; exit 1; }
+            echo "Signing $sbom"
+            cosign sign-blob --yes --bundle ${sbom}.bundle.json "$sbom" > ${sbom}.sig 2> ${sbom}.sig.log || { echo "Failed signing $sbom" >&2; exit 1; }
+            grep -i 'tlog\|rekor' ${sbom}.sig.log | grep -Eo 'index: [0-9]+' | awk '{print $2}' > ${sbom}.sig.tlog-index || true
+          done
+          if [ "${REQUIRE_ORAS_SBOM_MEDIA_TYPES}" = "true" ] && [ -f "oras-index-${IMAGE_SLUG}.json" ]; then
+            echo "Evaluating ORAS index policy"
+            conftest test --no-color oras-index-${IMAGE_SLUG}.json -p security/policy || { echo "Policy check failed for ORAS index" >&2; exit 1; }
+          fi
+      - name: Enforce ORAS Index Diff (Strict)
+        if: ${{ env.STRICT_ORAS_INDEX_CHECK == 'true' }}
+        run: |
+          set -e
+          found=0
+          for f in oras-index-diff-*.json; do
+            [ -f "$f" ] || continue
+            found=1
+            MISMATCH=$(jq -r '.summary.mismatchCount // 0' "$f" 2>/dev/null || echo 0)
+            if [ "$MISMATCH" -gt 0 ]; then
+              echo "ORAS index diff mismatches=$MISMATCH detected in $f (STRICT_ORAS_INDEX_CHECK=true)" >&2
+              exit 1
+            fi
+          done
+          if [ $found -eq 0 ]; then echo "No ORAS index diff files found (feature may be disabled)"; else echo "ORAS index diff strict check passed"; fi
+      - name: Conftest Policy Evaluation
+        if: ${{ env.ENABLE_POLICIES == 'true' }}
+        run: |
+          set -e
+          echo "Installing pinned conftest"
+          CONFTEST_VERSION="0.54.0"
+          CACHE_DIR="$HOME/.cache/conftest"
+          mkdir -p "$CACHE_DIR"
+          if [ ! -f "$CACHE_DIR/conftest-$CONFTEST_VERSION" ]; then
+            curl -sSL -o /tmp/conftest.tgz https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_Linux_x86_64.tar.gz
+            tar -xzf /tmp/conftest.tgz -C /tmp
+            mv /tmp/conftest "$CACHE_DIR/conftest-$CONFTEST_VERSION"
+          fi
+          install -m 0755 "$CACHE_DIR/conftest-$CONFTEST_VERSION" /usr/local/bin/conftest
+          conftest --version
+          ls -1 security/policy || { echo "Policy directory missing" >&2; exit 1; }
+
+          # Evaluate attestation & provenance against policies
+          for target in attestation-${IMAGE_SLUG}.json provenance-${IMAGE_SLUG}.json; do
+            if [ -f "$target" ]; then
+              echo "Running conftest on $target"
+              conftest test --no-color $target -p security/policy || { echo "Policy check failed for $target" >&2; exit 1; }
+            fi
+          done
+          # Always evaluate ORAS index structure if present
+          if [ -f "oras-index-${IMAGE_SLUG}.json" ]; then
+            echo "Running conftest on oras-index-${IMAGE_SLUG}.json"
+            conftest test --no-color oras-index-${IMAGE_SLUG}.json -p security/policy || { echo "Policy check failed for ORAS index" >&2; exit 1; }
+          fi
+      - name: Evaluate SBOM Baseline Update Eligibility
+        if: ${{ github.event_name == 'pull_request' }}
+        id: sbom_gate
+        run: |
+          echo "PR #${{ github.event.pull_request.number }} labels:" | tee sbom_labels.log
+          echo "${{ toJson(github.event.pull_request.labels) }}" | tee -a sbom_labels.log
+          echo "${{ toJson(github.event.pull_request.labels) }}" | jq -r '.[].name' > pr_labels.txt
+          if grep -qi '^sbom-baseline-update$' pr_labels.txt; then
+            echo "eligible=true" >> $GITHUB_OUTPUT
+            echo "SBOM baseline update label present."; else
+            echo "eligible=false" >> $GITHUB_OUTPUT
+            echo "SBOM baseline update label NOT present."; fi
+      - name: Fail on SBOM Diff Without Label
+        if: ${{ github.event_name == 'pull_request' && steps.sbom_gate.outputs.eligible == 'false' }}
+        run: |
+          # Determine if diff has any meaningful changes (added/removed/version/hash changes)
+          if [ -f sbom-diff-${IMAGE_SLUG}.json ]; then
+            CHANGES=$(jq '.version_changed + .hash_changed + .added + .removed | length' sbom-diff-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+            if [ "$CHANGES" -gt 0 ]; then
+              echo "SBOM changes detected but 'sbom-baseline-update' label missing (count=$CHANGES)." >&2
+              exit 1
+            else
+              echo "No SBOM changes detected (label not required)."; fi
+          else
+            echo "No diff file present; skipping."; fi
+      - name: Update SBOM Baseline (Label-Gated)
+        if: ${{ github.event_name == 'pull_request' && steps.sbom_gate.outputs.eligible == 'true' && (github.base_ref == 'main' || github.base_ref == 'master') }}
+        run: |
+          python security/sbom_diff.py --current sbom-${IMAGE_SLUG}.cdx.json --previous security/sbom-baselines/${IMAGE_SLUG}.cdx.json --output sbom-diff-${IMAGE_SLUG}.json --update-baseline || true
+          echo "SBOM baseline updated (label present)."
+      - name: SBOM Diff PR Comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const slug = process.env.IMAGE_SLUG;
+            const p = `sbom-diff-${slug}.json`;
+            if (!fs.existsSync(p)) { core.info('No SBOM diff file present.'); return; }
+            const diff = JSON.parse(fs.readFileSync(p,'utf-8'));
+            const c = diff.meta?.counts || {};
+            const sample = (arr)=> (arr||[]).slice(0,5).map(o=> o.name + (o.version? '@'+o.version: (o.current_version?'@'+o.current_version:''))).join(', ');
+            const lines = [];
+            lines.push(`# SBOM Diff for ${slug}`);
+            lines.push(`Added: ${c.added||0}  Removed: ${c.removed||0}  Version Changed: ${c.version_changed||0}  Hash Changed: ${c.hash_changed||0}`);
+            if((diff.added||[]).length) lines.push(`Added sample: ${sample(diff.added)}`);
+            if((diff.removed||[]).length) lines.push(`Removed sample: ${sample(diff.removed)}`);
+            if((diff.version_changed||[]).length) lines.push(`Version changed sample: ${sample(diff.version_changed)}`);
+            if((diff.hash_changed||[]).length) lines.push(`Hash changed sample: ${sample(diff.hash_changed)}`);
+            // SBOM attachment indicators
+            const attachments = [];
+            if (fs.existsSync(`sbom-${slug}.cdx.json`)) attachments.push('CycloneDX(trivy)');
+            if (fs.existsSync(`sbom-${slug}.spdx.json`)) attachments.push('SPDX(trivy)');
+            if (fs.existsSync(`syft-${slug}.cyclonedx.json`)) attachments.push('CycloneDX(syft)');
+            if (fs.existsSync(`syft-${slug}.spdx.json`)) attachments.push('SPDX(syft)');
+            if (attachments.length) lines.push(`SBOM Artifacts: ${attachments.join(', ')}`);
+            lines.push(`Label required for SBOM baseline update: sbom-baseline-update`);
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n')
+            });
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -96,11 +886,335 @@ jobs:
           path: |
             sbom-${{ env.IMAGE_SLUG }}.cdx.json
             sbom-${{ env.IMAGE_SLUG }}.spdx.json
+            syft-${{ env.IMAGE_SLUG }}.cyclonedx.json
+            syft-${{ env.IMAGE_SLUG }}.spdx.json
+            sbom-${{ env.IMAGE_SLUG }}.cdx.json.sig
+            sbom-${{ env.IMAGE_SLUG }}.cdx.json.bundle.json
+            sbom-${{ env.IMAGE_SLUG }}.cdx.json.sig.tlog-index
+            sbom-${{ env.IMAGE_SLUG }}.spdx.json.sig
+            sbom-${{ env.IMAGE_SLUG }}.spdx.json.bundle.json
+            sbom-${{ env.IMAGE_SLUG }}.spdx.json.sig.tlog-index
+            grype-image.json
+            grype-image.sarif
+            sbom-diff-${{ env.IMAGE_SLUG }}.json
+            provenance-${{ env.IMAGE_SLUG }}.json
+            provenance-${{ env.IMAGE_SLUG }}.json.sha256
+            attestation-${{ env.IMAGE_SLUG }}.json
+            attestation-${{ env.IMAGE_SLUG }}.json.sig
+            provenance-${{ env.IMAGE_SLUG }}.json.bundle.json
+            attestation-${{ env.IMAGE_SLUG }}.json.bundle.json
+            provenance-${{ env.IMAGE_SLUG }}.json.sig.tlog-index
+            attestation-${{ env.IMAGE_SLUG }}.json.sig.tlog-index
+            image-${{ env.IMAGE_SLUG }}.bundle.json
+            image-${{ env.IMAGE_SLUG }}-attest.bundle.json
+            oras-discover-${{ env.IMAGE_SLUG }}.json
+            oras-attachments-${{ env.IMAGE_SLUG }}.json
+            oras-index-${{ env.IMAGE_SLUG }}.json
+            oras-index-${{ env.IMAGE_SLUG }}.json.sig
+            oras-index-${{ env.IMAGE_SLUG }}.json.bundle.json
+            oras-index-${{ env.IMAGE_SLUG }}.json.sig.tlog-index
+            oras-index-diff-${{ env.IMAGE_SLUG }}.json
           if-no-files-found: warn
       - name: Baseline Drift Check (CRITICAL only)
         run: |
           python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json
         continue-on-error: false
+      - name: Evidence Policy Check
+        if: ${{ env.ENABLE_COSIGN == 'true' }}
+        run: |
+          set -e
+          status=0
+          requireBundles=${REQUIRE_BUNDLES:-false}
+          requireSbomSigs=${REQUIRE_SBOM_SIGNATURES:-false}
+          requireIndexSig=${SIGN_ORAS_INDEX:-false}
+          echo "Evidence Policy: REQUIRE_BUNDLES=$requireBundles REQUIRE_SBOM_SIGNATURES=$requireSbomSigs"
+          # Core required signatures (provenance & attestation)
+          for f in provenance-${IMAGE_SLUG}.json.sig attestation-${IMAGE_SLUG}.json.sig; do
+            if [ ! -f "$f" ]; then echo "Missing signature: $f" >&2; status=1; fi
+          done
+          if [ "$requireBundles" = "true" ]; then
+            for f in provenance-${IMAGE_SLUG}.json.bundle.json attestation-${IMAGE_SLUG}.json.bundle.json; do
+              [ -f "$f" ] || { echo "Missing bundle: $f" >&2; status=1; }
+            done
+            if [ "${ENABLE_IMAGE_PUSH}" = "true" ]; then
+              for f in image-${IMAGE_SLUG}.bundle.json image-${IMAGE_SLUG}-attest.bundle.json; do
+                [ -f "$f" ] || { echo "Missing image bundle: $f" >&2; status=1; }
+              done
+            fi
+          fi
+          if [ "$requireSbomSigs" = "true" ]; then
+            for f in sbom-${IMAGE_SLUG}.cdx.json.sig sbom-${IMAGE_SLUG}.spdx.json.sig; do
+              [ -f "$f" ] || { echo "Missing SBOM signature: $f" >&2; status=1; }
+            done
+            if [ "$requireBundles" = "true" ]; then
+              for f in sbom-${IMAGE_SLUG}.cdx.json.bundle.json sbom-${IMAGE_SLUG}.spdx.json.bundle.json; do
+                [ -f "$f" ] || { echo "Missing SBOM bundle: $f" >&2; status=1; }
+              done
+            fi
+          fi
+          if [ "$requireIndexSig" = "true" ]; then
+            if [ -f "oras-index-${IMAGE_SLUG}.json" ]; then
+              if [ ! -f "oras-index-${IMAGE_SLUG}.json.sig" ]; then
+                echo "Missing ORAS index signature oras-index-${IMAGE_SLUG}.json.sig" >&2; status=1;
+              fi
+              if [ "$requireBundles" = "true" ] && [ ! -f "oras-index-${IMAGE_SLUG}.json.bundle.json" ]; then
+                echo "Missing ORAS index bundle oras-index-${IMAGE_SLUG}.json.bundle.json" >&2; status=1;
+              fi
+            else
+              echo "NOTE: ORAS index not present; skipping index signature enforcement" >&2
+            fi
+          fi
+          if [ $status -ne 0 ]; then
+            echo "Evidence policy FAILED" >&2
+            exit 1
+          fi
+          echo "Evidence policy satisfied"
+      - name: Reproducibility Mismatch Enforcement
+        if: ${{ env.ENABLE_REPRO_CHECK == 'true' && env.FAIL_ON_REPRO_MISMATCH == 'true' }}
+        run: |
+          if [ "${REPRO_MATCH}" != "true" ]; then
+            echo "Reproducibility mismatch detected and failOnReproMismatch enabled." >&2
+            exit 1
+          fi
+          echo "Reproducibility match confirmed."
+      - name: Aggregate Critical/High Counts (Trivy + Grype)
+        id: agg
+        run: |
+          set -e
+          # jq is pre-installed on ubuntu-latest; if missing, uncomment below:
+          # sudo apt-get update && sudo apt-get install -y jq
+          python security/sarif_severity_extract.py --sarif trivy-image.sarif --sarif grype-image.sarif --output precise-severity-${IMAGE_SLUG}.json || true
+          echo "Raw precise severity summary:"; cat precise-severity-${IMAGE_SLUG}.json || true
+          TOTAL_CRITICAL=$(jq -r '.totals.critical // 0' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          TOTAL_HIGH=$(jq -r '.totals.high // 0' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          TOTAL_COMBINED=$(jq -r '.totals.critical_high_combined // 0' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo $((TOTAL_CRITICAL + TOTAL_HIGH)))
+          TRIVY_CRITICAL=$(jq -r '.summaries[] | select(.file=="trivy-image.sarif") | .counts.critical' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          TRIVY_HIGH=$(jq -r '.summaries[] | select(.file=="trivy-image.sarif") | .counts.high' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          GRYPE_CRITICAL=$(jq -r '.summaries[] | select(.file=="grype-image.sarif") | .counts.critical' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          GRYPE_HIGH=$(jq -r '.summaries[] | select(.file=="grype-image.sarif") | .counts.high' precise-severity-${IMAGE_SLUG}.json 2>/dev/null || echo 0)
+          echo "Trivy H:$TRIVY_HIGH C:$TRIVY_CRITICAL  Grype H:$GRYPE_HIGH C:$GRYPE_CRITICAL"
+          echo "total_critical_high=$TOTAL_COMBINED" >> $GITHUB_OUTPUT
+          echo "total_critical=$TOTAL_CRITICAL" >> $GITHUB_OUTPUT
+          echo "total_high=$TOTAL_HIGH" >> $GITHUB_OUTPUT
+          cat > vuln-counts-${IMAGE_SLUG}.json <<EOF
+          {"trivy": {"high": $TRIVY_HIGH, "critical": $TRIVY_CRITICAL}, "grype": {"high": $GRYPE_HIGH, "critical": $GRYPE_CRITICAL},
+           "totals": {"high": $TOTAL_HIGH, "critical": $TOTAL_CRITICAL, "combined": $TOTAL_COMBINED},
+           "thresholds": {"MAX_ALLOWED_CRITICAL": ${MAX_ALLOWED_CRITICAL:-0}, "MAX_ALLOWED_HIGH": ${MAX_ALLOWED_HIGH:-0}, "MAX_ALLOWED_TOTAL_HIGH_CRITICAL": ${MAX_ALLOWED_TOTAL_HIGH_CRITICAL:-0}},
+           "precise_source": "precise-severity-${IMAGE_SLUG}.json"}
+          EOF
+      - name: Evaluate Vulnerability Threshold
+        id: vuln_gate
+        run: |
+          set -e
+          THRESH_INPUT='${{ inputs.vuln-threshold }}'
+          TOTAL=${{ steps.agg.outputs.total_critical_high || 0 }}
+          STATUS="success"
+            REASON="Within threshold"
+          if [ -n "$THRESH_INPUT" ]; then
+            if ! echo "$THRESH_INPUT" | grep -Eq '^[0-9]+$'; then
+              echo "invalid_threshold=true" >> $GITHUB_OUTPUT
+              echo "Gate evaluation failed: invalid threshold format" >&2
+              echo '{"status":"failure","reason":"Invalid threshold format"}' > gate-${IMAGE_SLUG}.json
+              exit 1
+            fi
+            if [ "$TOTAL" -gt "$THRESH_INPUT" ]; then
+              STATUS="failure"; REASON="Combined critical/high $TOTAL exceeds threshold $THRESH_INPUT";
+            fi
+          else
+            if [ "$TOTAL" -gt 0 ]; then STATUS="failure"; REASON="Strict mode: vulnerabilities present ($TOTAL)"; fi
+          fi
+          echo "gate_status=$STATUS" >> $GITHUB_OUTPUT
+          echo "gate_reason=$REASON" >> $GITHUB_OUTPUT
+          printf '{"status":"%s","reason":"%s","total":%s,"threshold":"%s"}\n' "$STATUS" "$REASON" "$TOTAL" "${THRESH_INPUT:-strict}" > gate-${IMAGE_SLUG}.json
+          if [ "$STATUS" = "failure" ]; then exit 1; fi
+      - name: Upload Gate Result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-result-${{ env.IMAGE_SLUG }}
+          path: gate-${{ env.IMAGE_SLUG }}.json
+      - name: Create Check Run (Gate)
+        if: ${{ always() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.vuln_gate.outputs.gate_status || 'unknown' }}';
+            const reason = `${{ toJson(steps.vuln_gate.outputs.gate_reason) }}`.replace(/^"|"$/g,'');
+            const conclusion = status === 'failure' ? 'failure' : (status === 'success' ? 'success' : 'neutral');
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: `Vuln Gate: ${process.env.IMAGE_SLUG}`,
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion,
+              output: { title: 'Vulnerability Threshold Gate', summary: reason }
+            });
+      - name: Append Vulnerability Summary (Job)
+        run: |
+          IMAGE_SLUG=$(echo "${{ matrix.dockerfile }}" | tr '/' '-')
+          THRESH_INPUT='${{ inputs.vuln-threshold }}'
+          {
+            echo "### Vulnerability Summary (${IMAGE_SLUG})";
+            echo "Combined Critical/High: ${{ steps.agg.outputs.total_critical_high || 0 }}";
+            echo "Critical: ${{ steps.agg.outputs.total_critical || 0 }}  High: ${{ steps.agg.outputs.total_high || 0 }}";
+            if [ -n "$THRESH_INPUT" ]; then echo "Threshold: $THRESH_INPUT"; else echo "Threshold Mode: strict (fail on any)"; fi
+          } >> $GITHUB_STEP_SUMMARY
+      - name: PR Vulnerability Summary Comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const total = Number('${{ steps.agg.outputs.total_critical_high || 0 }}');
+            const thrInput = `"${{ inputs.vuln-threshold }}"`.replace(/^"|"$/g,'');
+            const critical = Number('${{ steps.agg.outputs.total_critical || 0 }}');
+            const high = Number('${{ steps.agg.outputs.total_high || 0 }}');
+            const lines = [];
+            lines.push(`Security Gate Summary for ${process.env.IMAGE_SLUG}`);
+            lines.push(`Critical: ${critical}  High: ${high}  Combined: ${total}`);
+            if (thrInput) {
+              lines.push(`Threshold: ${thrInput} -> ${total > Number(thrInput) ? 'EXCEEDED ❌' : 'OK ✅'}`);
+            } else {
+              lines.push('Threshold: strict (fail on any)');
+              lines.push(total > 0 ? 'Status: FAIL ❌' : 'Status: PASS ✅');
+            }
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n')
+            });
+      - name: Generate Security Summary HTML
+        run: |
+          set -e
+          SLUG=${IMAGE_SLUG}
+          VC_FILE=vuln-counts-${SLUG}.json
+          SBOM_DIFF=sbom-diff-${SLUG}.json
+          ORAS_DIFF=oras-index-diff-${SLUG}.json
+          PROV=provenance-${SLUG}.json
+          ATT=attestation-${SLUG}.json
+          echo "Generating security summary for $SLUG"
+          # Extract values with fallback
+          TOTAL_H=$(jq -r '.totals.high // 0' "$VC_FILE" 2>/dev/null || echo 0)
+          TOTAL_C=$(jq -r '.totals.critical // 0' "$VC_FILE" 2>/dev/null || echo 0)
+          COMBINED=$(jq -r '.totals.combined // ($TOTAL_H + $TOTAL_C)' "$VC_FILE" 2>/dev/null || echo $((TOTAL_H+TOTAL_C)))
+          SBOM_ADDED=$(jq -r '.meta.counts.added // 0' "$SBOM_DIFF" 2>/dev/null || echo 0)
+          SBOM_REMOVED=$(jq -r '.meta.counts.removed // 0' "$SBOM_DIFF" 2>/dev/null || echo 0)
+          ORAS_MISMATCH=$(jq -r '.summary.mismatchCount // 0' "$ORAS_DIFF" 2>/dev/null || echo 0)
+          cat > security-summary-${SLUG}.html <<EOF
+          <!DOCTYPE html><html><head><meta charset='utf-8'><title>Security Summary - ${SLUG}</title>
+          <style>
+          :root { --bg:#0f172a; --panel:#1e293b; --border:#334155; --primary:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+          body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:#e2e8f0;padding:28px;line-height:1.5;}
+          h1{color:var(--primary);margin-top:0;font-size:1.9rem;display:flex;align-items:center;gap:12px;}
+          section{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:22px;backdrop-filter:blur(4px);}
+          table{border-collapse:collapse;width:100%;margin-top:10px;}td,th{border:1px solid var(--border);padding:8px 10px;font-size:14px;}th{background:var(--panel);text-align:left;font-weight:600;letter-spacing:.5px;}
+          code{background:var(--panel);padding:2px 6px;border-radius:6px;font-size:12px;}
+          .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:12px;}
+          .kpi{background:var(--panel);border:1px solid var(--border);padding:12px 14px;border-radius:12px;}
+          .kpi h3{margin:0 0 4px;font-size:.85rem;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;}
+          .kpi .v{font-size:1.3rem;font-weight:600;}
+          footer{margin-top:30px;font-size:12px;color:#94a3b8;}
+          .ok{color:var(--ok);} .warn{color:var(--warn);} .err{color:var(--err);} .pill{display:inline-block;padding:2px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--border);margin-right:6px;font-size:11px;}
+          a{color:var(--primary);text-decoration:none;}
+          </style></head><body>
+          <h1>🔐 Security Summary – ${SLUG}</h1>
+          <section><div class="grid">
+            <div class="kpi"><h3>Combined Vulns</h3><div class="v">${COMBINED}</div></div>
+            <div class="kpi"><h3>High</h3><div class="v">${TOTAL_H}</div></div>
+            <div class="kpi"><h3>Critical</h3><div class="v">${TOTAL_C}</div></div>
+            <div class="kpi"><h3>SBOM Added</h3><div class="v">${SBOM_ADDED}</div></div>
+            <div class="kpi"><h3>SBOM Removed</h3><div class="v">${SBOM_REMOVED}</div></div>
+            <div class="kpi"><h3>ORAS Mismatches</h3><div class="v">${ORAS_MISMATCH}</div></div>
+          </div></section>
+          <h2>Vulnerabilities (High / Critical)</h2>
+          <p>Combined High+Critical findings: <strong>${COMBINED}</strong> (High=${TOTAL_H} Critical=${TOTAL_C})</p>
+          <h2>SBOM Diff</h2>
+          <p>Added: ${SBOM_ADDED} • Removed: ${SBOM_REMOVED}</p>
+          <h2>ORAS Index Diff</h2>
+          <p>Mismatches: ${ORAS_MISMATCH}</p>
+          <h2>Evidence Files</h2>
+          <table><thead><tr><th>Artifact</th><th>Present</th><th>Signature</th></tr></thead><tbody>
+          $(for a in "$PROV" "$ATT" sbom-${SLUG}.cdx.json sbom-${SLUG}.spdx.json; do [ -f "$a" ] || continue; base=$(basename "$a"); sig="${a}.sig"; if [ -f "$sig" ]; then sigStatus='<span class="ok">yes</span>'; else sigStatus='<span class="warn">no</span>'; fi; echo "<tr><td>${base}</td><td><span class=ok>yes</span></td><td>${sigStatus}</td></tr>"; done)
+          </tbody></table>
+          <h2>Raw Files</h2><ul>
+          <li><code>${VC_FILE}</code></li>
+          <li><code>${SBOM_DIFF}</code></li>
+          <li><code>${ORAS_DIFF}</code></li>
+          </ul>
+          <footer>Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ) • STRICT_ORAS_INDEX_CHECK=${STRICT_ORAS_INDEX_CHECK}</footer>
+          </body></html>
+          EOF
+          echo "Security summary HTML created: security-summary-${SLUG}.html"; head -n 5 security-summary-${SLUG}.html
+      - name: Upload Security Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary-${{ env.IMAGE_SLUG }}
+          path: security-summary-${{ env.IMAGE_SLUG }}.html
+          if-no-files-found: warn
+      - name: Upload Vulnerability Counts Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-counts-${{ env.IMAGE_SLUG }}
+          path: vuln-counts-${{ env.IMAGE_SLUG }}.json
+          if-no-files-found: warn
+      - name: Fail on Excess Vulnerabilities
+        if: ${{ (steps.agg.outputs.total_critical && steps.agg.outputs.total_critical > env.MAX_ALLOWED_CRITICAL) || (steps.agg.outputs.total_high && steps.agg.outputs.total_high > env.MAX_ALLOWED_HIGH) || (steps.agg.outputs.total_critical_high && steps.agg.outputs.total_critical_high > env.MAX_ALLOWED_TOTAL_HIGH_CRITICAL) }}
+        run: |
+          echo "High total: ${{ steps.agg.outputs.total_high }} (max=${{ env.MAX_ALLOWED_HIGH }})" >&2
+          echo "Critical total: ${{ steps.agg.outputs.total_critical }} (max=${{ env.MAX_ALLOWED_CRITICAL }})" >&2
+          echo "Combined total: ${{ steps.agg.outputs.total_critical_high }} (max=${{ env.MAX_ALLOWED_TOTAL_HIGH_CRITICAL }})" >&2
+          echo "Failing due to threshold breach. Adjust environment thresholds to tune policy." >&2
+          exit 1
+
+  license-scan:
+    name: License Policy Scan
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ai.in
+      - name: Install project (licenses context)
+        run: |
+          python -m pip install --upgrade pip
+          # Install using main hashed lock for complete graph
+          pip install --no-cache-dir --require-hashes -r requirements.txt || pip install -r requirements.txt
+      - name: Run license scan
+        run: |
+          python security/license_scan.py --deny GPL-3.0-only,GPL-3.0-or-later,AGPL-3.0-only,AGPL-3.0-or-later --output licenses-report.json || echo "license_scan_exit=$?" >> $GITHUB_ENV
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: licenses-report.json
+      - name: Generate license allowlist artifact
+        run: |
+          if [ -f licenses-report.json ]; then
+            jq -r '.dependencies[]? | select(.license != null) | .license' licenses-report.json | sort -u > license-allowlist.txt || true
+            echo "Generated license-allowlist.txt"; cat license-allowlist.txt || true
+          else
+            echo "licenses-report.json missing; skipping allowlist generation" >&2
+          fi
+      - name: Upload license allowlist
+        if: ${{ hashFiles('license-allowlist.txt') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-allowlist
+          path: license-allowlist.txt
+      - name: Enforce license policy
+        run: |
+          if grep -q 'license_scan_exit=1' $GITHUB_ENV 2>/dev/null; then
+            echo "Blocked license detected" >&2
+            exit 1
+          fi
       - name: Evaluate Baseline Update Eligibility
         id: gate
         if: ${{ github.event_name == 'pull_request' }}
@@ -117,10 +1231,618 @@ jobs:
       - name: Update Baseline (Label-Gated)
         if: ${{ github.event_name == 'pull_request' && steps.gate.outputs.eligible == 'true' && (github.base_ref == 'main' || github.base_ref == 'master') }}
         run: |
-          echo "Label gate passed; updating baseline file." 
+          echo "Label gate passed; updating baseline file."
           python security/compare_vuln_baseline.py --sarif trivy-image.sarif --baseline security/vuln_baseline.json --update-baseline
-          echo "NOTE: Ensure this PR includes justification for baseline change." 
+          echo "NOTE: Ensure this PR includes justification for baseline change."
       - name: Warn Baseline Not Updated
         if: ${{ github.event_name == 'pull_request' && steps.gate.outputs.eligible == 'false' }}
         run: |
-          echo "Baseline not updated (missing 'security-baseline-update' label). If intentional drift acceptance is required, add the label and re-run." 
+          echo "Baseline not updated (missing 'security-baseline-update' label). If intentional drift acceptance is required, add the label and re-run."
+
+  provenance-verify:
+    name: Verify Provenance & SBOM Integrity
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    if: ${{ always() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download SBOM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Install ORAS (for verification)
+        # if: ${{ env.ENABLE_ORAS_ATTACH == 'true' }}  # Disabled: feature flag not yet wired
+        run: |
+          ORAS_VERSION=1.2.0
+          curl -sSL -o /tmp/oras.tar.gz https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
+          tar -xzf /tmp/oras.tar.gz -C /usr/local/bin oras
+          oras version || true
+      - name: Verify ORAS Attachments (if any)
+        run: |
+          set -e
+          echo "Scanning artifacts for ORAS discovery files"
+          count=0
+          for d in artifacts/sbom-*; do
+            [ -d "$d" ] || continue
+            disc=$(find "$d" -maxdepth 1 -name 'oras-discover-*.json' | head -n1)
+            [ -f "$disc" ] || continue
+            echo "Found discovery: $disc"
+            # Basic checks for media types
+            if ! jq -e '. | length >= 0' "$disc" >/dev/null 2>&1; then
+              echo "Malformed ORAS discovery JSON" >&2; exit 1; fi
+            # Extract all entries with mediaType/digest
+            jq '..|objects|select(has("mediaType") and has("digest"))' "$disc" > "$d/oras-flat.json" || true
+            # Assert required media types (provenance & attestation); SBOM types are optional but warned
+            HAS_PROV=$(jq -r 'select(.mediaType | test("slsa.provenance"; "i")) | .mediaType' "$d/oras-flat.json" | head -n1 || true)
+            HAS_ATT=$(jq -r 'select(.mediaType | test("in-toto"; "i")) | .mediaType' "$d/oras-flat.json" | head -n1 || true)
+            if [ -z "$HAS_PROV" ]; then echo "ERROR: Missing SLSA provenance attachment media type" >&2; exit 1; fi
+            if [ -z "$HAS_ATT" ]; then echo "ERROR: Missing in-toto attestation attachment media type" >&2; exit 1; fi
+            # Optional SBOMs
+            HAS_CDX=$(jq -r 'select(.mediaType | test("cyclonedx"; "i")) | .mediaType' "$d/oras-flat.json" | head -n1 || true)
+            HAS_SPDX=$(jq -r 'select(.mediaType | test("spdx"; "i")) | .mediaType' "$d/oras-flat.json" | head -n1 || true)
+            if [ -z "$HAS_CDX" ]; then echo "WARN: CycloneDX SBOM not found in ORAS attachments" >&2; fi
+            if [ -z "$HAS_SPDX" ]; then echo "WARN: SPDX SBOM not found in ORAS attachments" >&2; fi
+            # Digest cross-check: compute local sha256 digests for provenance & attestation and ensure discovery includes them
+            prov_file=$(find "$d" -maxdepth 1 -name 'provenance-*.json' | head -n1 || true)
+            att_file=$(find "$d" -maxdepth 1 -name 'attestation-*.json' | head -n1 || true)
+            if [ -n "$prov_file" ]; then
+              local_prov_digest=sha256:$(sha256sum "$prov_file" | awk '{print $1}')
+              if ! grep -q "$local_prov_digest" "$disc"; then echo "ERROR: Provenance digest $local_prov_digest not found in ORAS discovery" >&2; exit 1; fi
+            fi
+            if [ -n "$att_file" ]; then
+              local_att_digest=sha256:$(sha256sum "$att_file" | awk '{print $1}')
+              if ! grep -q "$local_att_digest" "$disc"; then echo "ERROR: Attestation digest $local_att_digest not found in ORAS discovery" >&2; exit 1; fi
+            fi
+            count=$((count+1))
+          done
+          echo "ORAS discovery files processed: $count"
+          # Do not fail build if none present (feature is optional)
+      - name: Cross-check ORAS Index vs Discovery
+        # if: ${{ env.ENABLE_ORAS_ATTACH == 'true' }}  # Disabled: feature flag not yet wired
+        run: |
+          set -e
+          strict=${STRICT_ORAS_INDEX_CHECK:-false}
+          echo "Cross-check ORAS index (strict=$strict)"
+          mismatches=0
+          for d in artifacts/sbom-*; do
+            [ -d "$d" ] || continue
+            idx=$(find "$d" -maxdepth 1 -name 'oras-index-*.json' | head -n1)
+            disc=$(find "$d" -maxdepth 1 -name 'oras-discover-*.json' | head -n1)
+            [ -f "$idx" ] || continue
+            if [ ! -f "$disc" ]; then echo "WARN: Index present but discovery missing in $d" >&2; if [ "$strict" = "true" ]; then exit 1; else continue; fi; fi
+            echo "Checking $idx against $disc"
+            # Build set of discovery digests keyed by mediaType
+            tmpd=$(mktemp)
+            jq -r '..|objects|select(has("mediaType") and has("digest"))|[.mediaType, .digest]|@tsv' "$disc" | sort -u > "$tmpd"
+            # For each index artifact ensure computed sha256 appears (if digest present in discovery for same mediaType)
+            while IFS= read -r line; do
+              file=$(echo "$line" | jq -r '.file')
+              mt=$(echo "$line" | jq -r '.mediaType')
+              sha=$(echo "$line" | jq -r '.sha256')
+            done < <(jq -c '.artifacts[]' "$idx")
+            # Recompute digests and ensure alignment
+            while IFS=$'\t' read -r mt dgest; do
+              # Strip optional sha256: prefix for comparison
+              clean=${dgest#sha256:}
+              # If index has entry for this mediaType, compare digest
+              idx_sha=$(jq -r --arg mt "$mt" '.artifacts[] | select(.mediaType==$mt) | .sha256' "$idx" | head -n1 || true)
+              if [ -n "$idx_sha" ] && [ "$idx_sha" != "$clean" ]; then
+                echo "Mismatch mediaType=$mt index=$idx_sha discovery=$clean" >&2
+                mismatches=$((mismatches+1))
+              fi
+            done < "$tmpd"
+            rm -f "$tmpd"
+          done
+          if [ "$mismatches" -gt 0 ]; then
+            msg="ORAS index/discovery mismatches: $mismatches"
+            if [ "$strict" = "true" ]; then echo "ERROR: $msg" >&2; exit 1; else echo "WARN: $msg" >&2; fi
+          else
+            echo "ORAS index cross-check passed"
+          fi
+      - name: Install Cosign (for verification)
+        if: ${{ env.ENABLE_COSIGN == 'true' }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/sigstore/cosign/main/install.sh | sh -s -- -b /usr/local/bin
+          cosign version || true
+      - name: Verify Each Provenance
+        run: |
+          set -e
+          found=0
+          for dir in artifacts/sbom-*; do
+            [ -d "$dir" ] || continue
+            prov=$(find "$dir" -maxdepth 1 -name 'provenance-*.json' | head -n1)
+            cdx=$(find "$dir" -maxdepth 1 -name 'sbom-*.cdx.json' | head -n1)
+            spdx=$(find "$dir" -maxdepth 1 -name 'sbom-*.spdx.json' | head -n1)
+            if [ -z "$prov" ]; then echo "No provenance in $dir" >&2; continue; fi
+            # If ORAS discovery present, basic media type check
+            if [ -f "$dir/oras-discover-*.json" ]; then
+              echo "Found ORAS discovery file(s) in $dir"
+            fi
+            cp security/verify_provenance.py "$dir"/verify_provenance.py || true
+            (cd "$dir" && python verify_provenance.py --provenance "$(basename "$prov")") || { echo "Verification failed for $prov"; exit 1; }
+            # Cosign signature verification (if enabled)
+            if [ "${ENABLE_COSIGN}" = "true" ]; then
+              sigfile="${prov}.sig"
+              if [ -f "$sigfile" ]; then
+                echo "Verifying cosign signature: $sigfile"
+                cosign verify-blob --signature "$sigfile" "$prov" || { echo "Cosign signature verification failed for $prov" >&2; exit 1; }
+                if [ -f "${sigfile}.tlog-index" ]; then echo "Rekor index (provenance): $(cat ${sigfile}.tlog-index)"; else echo "WARNING: No tlog index found for provenance" >&2; fi
+                if [ -f "${prov}.bundle.json" ]; then
+                  echo "Bundle present: ${prov}.bundle.json"
+                  jq '.TransparencyLogBundle | {LogIndex, UUID, IntegratedTime}' "${prov}.bundle.json" || true
+                fi
+              else
+                echo "Cosign enabled but signature file missing for $prov" >&2; exit 1
+              fi
+              attestation=$(find "$dir" -maxdepth 1 -name 'attestation-*.json' | head -n1)
+              if [ -n "$attestation" ]; then
+                if [ -f "${attestation}.sig" ]; then
+                  echo "Verifying cosign signature: ${attestation}.sig"
+                  cosign verify-blob --signature "${attestation}.sig" "$attestation" || { echo "Cosign attestation signature failed: $attestation" >&2; exit 1; }
+                  if [ -f "${attestation}.sig.tlog-index" ]; then echo "Rekor index (attestation): $(cat ${attestation}.sig.tlog-index)"; else echo "WARNING: No tlog index for attestation" >&2; fi
+                  if [ -f "${attestation}.bundle.json" ]; then
+                    jq '.TransparencyLogBundle | {LogIndex, UUID, IntegratedTime}' "${attestation}.bundle.json" || true
+                  fi
+                else
+                  echo "Attestation present without signature (cosign enabled)" >&2; exit 1
+                fi
+              fi
+              # SBOM signature verification (CycloneDX & SPDX) if SBOMs are present
+              require_sbom=${REQUIRE_SBOM_SIGNATURES:-false}
+              if [ -n "$cdx" ]; then
+                if [ -f "${cdx}.sig" ]; then
+                  echo "Verifying cosign signature for CycloneDX SBOM: ${cdx}.sig"
+                  cosign verify-blob --signature "${cdx}.sig" "$cdx" || { echo "Cosign SBOM (CycloneDX) signature failed: $cdx" >&2; exit 1; }
+                  if [ -f "${cdx}.sig.tlog-index" ]; then echo "Rekor index (cdx SBOM): $(cat ${cdx}.sig.tlog-index)"; else echo "WARNING: No tlog index for CycloneDX SBOM" >&2; fi
+                  if [ -f "${cdx}.bundle.json" ]; then
+                    jq '.TransparencyLogBundle | {LogIndex, UUID, IntegratedTime}' "${cdx}.bundle.json" || true
+                  fi
+                else
+                  if [ "$require_sbom" = "true" ]; then
+                    echo "CycloneDX SBOM present but signature missing (required)" >&2; exit 1
+                  else
+                    echo "WARN: CycloneDX SBOM signature missing (non-fatal)" >&2
+                  fi
+                fi
+              fi
+              if [ -n "$spdx" ]; then
+                if [ -f "${spdx}.sig" ]; then
+                  echo "Verifying cosign signature for SPDX SBOM: ${spdx}.sig"
+                  cosign verify-blob --signature "${spdx}.sig" "$spdx" || { echo "Cosign SBOM (SPDX) signature failed: $spdx" >&2; exit 1; }
+                  if [ -f "${spdx}.sig.tlog-index" ]; then echo "Rekor index (spdx SBOM): $(cat ${spdx}.sig.tlog-index)"; else echo "WARNING: No tlog index for SPDX SBOM" >&2; fi
+                  if [ -f "${spdx}.bundle.json" ]; then
+                    jq '.TransparencyLogBundle | {LogIndex, UUID, IntegratedTime}' "${spdx}.bundle.json" || true
+                  fi
+                else
+                  if [ "$require_sbom" = "true" ]; then
+                    echo "SPDX SBOM present but signature missing (required)" >&2; exit 1
+                  else
+                    echo "WARN: SPDX SBOM signature missing (non-fatal)" >&2
+                  fi
+                fi
+              fi
+            fi
+            found=$((found+1))
+          done
+          if [ "$found" -eq 0 ]; then echo "No provenance artifacts found" >&2; exit 1; fi
+      - name: Verify ORAS Index Signature
+        # if: ${{ env.ENABLE_COSIGN == 'true' && env.SIGN_ORAS_INDEX == 'true' }}  # Disabled pending ORAS index signing
+        run: |
+          set -e
+          count=0
+          for dir in artifacts/sbom-*; do
+            [ -d "$dir" ] || continue
+            idx=$(find "$dir" -maxdepth 1 -name 'oras-index-*.json' | head -n1 || true)
+            [ -f "$idx" ] || continue
+            sig="${idx}.sig"
+            if [ ! -f "$sig" ]; then echo "Missing ORAS index signature for $idx" >&2; exit 1; fi
+            echo "Verifying ORAS index signature: $sig"
+            cosign verify-blob --signature "$sig" "$idx" || { echo "Cosign verification failed for ORAS index $idx" >&2; exit 1; }
+            if [ -f "${sig}.tlog-index" ]; then echo "Rekor index (ORAS index): $(cat ${sig}.tlog-index)"; fi
+            count=$((count+1))
+          done
+          if [ $count -eq 0 ]; then echo "No ORAS index files found to verify"; fi
+
+  security-tooling-tests:
+    name: Security Tooling Tests
+    runs-on: ubuntu-latest
+    needs: [provenance-verify]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+      - name: Run tests
+        run: pytest -q
+
+  vuln-summary:
+    name: Vulnerability Summary (PR Comment)
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Download vuln count artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: vuln-artifacts
+      - name: Summarize counts
+        id: summarize
+        run: |
+          set -e
+          TOTAL=0
+          echo '[' > all.json
+          first=1
+          for f in vuln-artifacts/vuln-counts-*/*.json; do
+            [ -f "$f" ] || continue
+            if [ $first -eq 1 ]; then first=0; else echo ',' >> all.json; fi
+            cat "$f" >> all.json
+          done
+          echo ']' >> all.json
+          jq '.' all.json
+          TOTAL=$(jq '[.[].totals.combined] | add' all.json 2>/dev/null || echo 0)
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+      - name: Publish Vulnerability Summary (Comment or Check)
+        if: ${{ steps.summarize.outputs.total != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'all.json';
+            if (!fs.existsSync(path)) { core.info('No aggregated vuln data.'); return; }
+            const data = JSON.parse(fs.readFileSync(path,'utf-8'));
+            const total = data.reduce((a,b)=>a + ((b.totals && b.totals.combined) || 0),0);
+            const lines = [];
+            lines.push('Vulnerability Summary (High/Critical)');
+            if (!data.length) { lines.push('No high/critical findings across scanned images.'); }
+            data.forEach((obj,i)=> {
+              const trivyTotal = (obj.trivy ? (obj.trivy.high + obj.trivy.critical) : 0);
+              const grypeTotal = (obj.grype ? (obj.grype.high + obj.grype.critical) : 0);
+              const combined = obj.totals ? obj.totals.combined : (trivyTotal + grypeTotal);
+              lines.push(`Image ${i+1}: combined=${combined} (High=${obj.totals?.high||0} Critical=${obj.totals?.critical||0}) Trivy(H:${obj.trivy?.high||0} C:${obj.trivy?.critical||0}) Grype(H:${obj.grype?.high||0} C:${obj.grype?.critical||0})`);
+            });
+            lines.push(`Aggregate total high/critical findings: ${total}`);
+            const body = lines.join('\n');
+            const mode = process.env.VULN_SUMMARY_MODE || 'comment';
+            if (mode === 'check-run') {
+              const conclusion = total > 0 ? 'action_required' : 'success';
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'Vulnerability Summary',
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion,
+                output: { title: 'High/Critical Vulnerability Summary', summary: body, text: body }
+              });
+              core.info('Published summary as check run');
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body
+              });
+              core.info('Published summary as PR comment');
+            }
+      - name: Upload aggregate JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-aggregate
+          path: all.json
+
+  ai-alignment:
+    name: AI Requirements Alignment
+    runs-on: ubuntu-latest
+    needs: [license-scan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python (cached)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ai.in
+      - name: Run Alignment Check
+        run: |
+          python security/check_ai_alignment.py --ai requirements-ai.in --lock requirements.txt
+
+  dependency-graph:
+    name: Dependency Provenance Graph
+    runs-on: ubuntu-latest
+    needs: [license-scan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python (cached)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ai.in
+      - name: Install dependencies for graph (pipdeptree)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir pipdeptree
+          # Install main lock to ensure graph reflects actual environment
+          pip install --no-cache-dir -r requirements.txt || true
+      - name: Generate Graph
+        run: |
+          python security/dependency_provenance_graph.py --lock requirements.txt --output dep-graph.json
+          python security/generate_constraints.py --lock requirements.txt --output constraints.txt
+      - name: Upload Graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-provenance
+          path: |
+            dep-graph.json
+            constraints.txt
+
+  create-manifests:
+    name: Create & Sign Multi-Arch Manifests
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    if: ${{ inputs.push_and_sign == true }}
+    steps:
+      - name: Download Digest Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: digests
+      - name: Build Image Map
+        run: |
+          set -e
+          ls -1 digests || true
+          # Expect files named digest-<slug>-<arch>.txt
+          awk 'NF' /dev/null > image-arch-map.txt
+          for f in digests/image-digest-*; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            slug_arch=${base#image-digest-}
+            slug_arch=${slug_arch%.txt}
+            # slug format: <slug>-<arch>
+            arch=${slug_arch##*-}
+            slug=${slug_arch%-${arch}}
+            echo "$slug $arch" >> image-arch-map.txt
+          done
+          sort -u image-arch-map.txt -o image-arch-map.txt
+          echo "Image map:"; cat image-arch-map.txt
+          # Derive unique base slugs
+          cut -d' ' -f1 image-arch-map.txt | sort -u > base-slugs.txt
+          echo "Base slugs:"; cat base-slugs.txt
+      - name: Install Cosign & Buildx
+        run: |
+          COSIGN_VERSION=$(curl -s https://api.github.com/repos/sigstore/cosign/releases/latest | jq -r '.tag_name')
+          curl -sSL -o cosign-linux-amd64 https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64
+          install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
+          docker buildx version || true
+      - name: Create and Push Manifests
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -e
+          rm -f manifests.txt
+          while read -r slug; do
+            amd_tag="ghcr.io/${{ github.repository }}:${slug}-amd64"
+            arm_tag="ghcr.io/${{ github.repository }}:${slug}-arm64"
+            manifest_ref="ghcr.io/${{ github.repository }}:${slug}"
+            echo "Creating manifest ${manifest_ref} from ${amd_tag} and ${arm_tag}"
+            docker manifest create "${manifest_ref}" "${amd_tag}" "${arm_tag}" || true
+            docker manifest push "${manifest_ref}" || true
+            echo "Signing manifest ${manifest_ref}"
+            cosign sign --yes "${manifest_ref}" || true
+            echo "${manifest_ref}" >> manifests.txt
+          done < base-slugs.txt
+      - name: Multi-Arch Summary
+        run: |
+          {
+            echo "### Multi-Arch Manifests";
+            if [ -f manifests.txt ]; then
+              while read -r m; do echo "- $m"; done < manifests.txt;
+            else echo "(none)"; fi
+          } >> $GITHUB_STEP_SUMMARY
+      - name: PR Comment (Manifests)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if(!fs.existsSync('manifests.txt')) { core.info('No manifests to report'); return; }
+            const lines = fs.readFileSync('manifests.txt','utf-8').split(/\r?\n/).filter(Boolean);
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: ['Multi-Arch Manifests Created:', ...lines.map(l=>`- ${l}`)].join('\n')
+            });
+  aggregate-security-summary:
+    name: Aggregate Security Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    steps:
+      - name: Download vulnerability artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: vuln-artifacts
+      - name: Summarize Vulnerabilities
+        id: aggregate
+        run: |
+          set -e
+          TOTAL_C=0; TOTAL_H=0; TOTAL_COMBINED=0; FAILS=0; IMAGES=0
+          printf "image,critical,high,combined,gate_status\n" > aggregate.csv
+          for f in vuln-artifacts/vuln-counts-*.json; do
+            [ -f "$f" ] || continue
+            IMAGES=$((IMAGES+1))
+            crit=$(jq -r '.totals.critical // 0' "$f")
+            high=$(jq -r '.totals.high // 0' "$f")
+            combined=$(jq -r '.totals.combined // ( .totals.critical + .totals.high )' "$f")
+            slug=$(basename "$f" | sed -e 's/vuln-counts-//' -e 's/.json//')
+            gate_file="vuln-artifacts/gate-result-${slug}.json"
+            gate_status="unknown"
+            if [ -f "$gate_file" ]; then gate_status=$(jq -r '.status' "$gate_file" 2>/dev/null || echo unknown); fi
+            [ "$gate_status" = "failure" ] && FAILS=$((FAILS+1))
+            TOTAL_C=$((TOTAL_C+crit)); TOTAL_H=$((TOTAL_H+high)); TOTAL_COMBINED=$((TOTAL_COMBINED+combined))
+            printf "%s,%s,%s,%s,%s\n" "$slug" "$crit" "$high" "$combined" "$gate_status" >> aggregate.csv
+          done
+          echo "images=$IMAGES" >> $GITHUB_OUTPUT
+          echo "total_critical=$TOTAL_C" >> $GITHUB_OUTPUT
+          echo "total_high=$TOTAL_H" >> $GITHUB_OUTPUT
+          echo "total_combined=$TOTAL_COMBINED" >> $GITHUB_OUTPUT
+          echo "failed_gates=$FAILS" >> $GITHUB_OUTPUT
+          {
+            echo "### Global Vulnerability Summary";
+            echo "Images processed: $IMAGES";
+            echo "Totals: Critical=$TOTAL_C High=$TOTAL_H Combined=$TOTAL_COMBINED";
+            echo "Failed Gates: $FAILS";
+            echo "\nCSV Detail:";
+            echo '\n'; sed 's/^/    /' aggregate.csv;
+          } >> $GITHUB_STEP_SUMMARY
+      - name: Upload Aggregate CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggregate-vulnerability-summary
+          path: aggregate.csv
+      - name: Create Global Check Run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fails = Number('${{ steps.aggregate.outputs.failed_gates || 0 }}');
+            const crit = Number('${{ steps.aggregate.outputs.total_critical || 0 }}');
+            const high = Number('${{ steps.aggregate.outputs.total_high || 0 }}');
+            const combined = Number('${{ steps.aggregate.outputs.total_combined || 0 }}');
+            const images = Number('${{ steps.aggregate.outputs.images || 0 }}');
+            const summary = `Images: ${images}\nCritical: ${crit}\nHigh: ${high}\nCombined: ${combined}\nFailed Gates: ${fails}`;
+            const conclusion = fails > 0 ? 'failure' : 'success';
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Global Vulnerability Summary',
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion,
+              output: { title: 'Aggregate Vulnerability Summary', summary, text: summary }
+            });
+
+  dependency-review:
+    name: Dependency Review (GitHub Advisory)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Dependency Review Action
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          # comment-on-pr removed (unsupported input for this action)
+          allow-licenses: MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause
+          deny-licenses: GPL-3.0-only,GPL-3.0-or-later,AGPL-3.0-only,AGPL-3.0-or-later
+
+  secret-scan:
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --no-git --report-format sarif --report-path gitleaks.sarif || true
+      - name: Upload Gitleaks SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+
+  dependabot-alerts:
+    name: Dependabot Alerts Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: read
+    steps:
+      - name: Query Dependabot alerts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          rm -f dependabot-alerts.json dependabot-trim.json
+          page=1
+          echo '[' > dependabot-alerts.json
+          first=1
+          while true; do
+            RESP=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/dependabot/alerts?state=open&per_page=100&page=$page")
+            COUNT=$(echo "$RESP" | jq 'length')
+            if [ "$COUNT" = "0" ]; then break; fi
+            if [ $first -eq 1 ]; then first=0; else echo ',' >> dependabot-alerts.json; fi
+            echo "$RESP" | jq -c '.[]' | paste -sd ',' - >> dependabot-alerts.json
+            page=$((page+1))
+          done
+          echo ']' >> dependabot-alerts.json
+          # Normalize into trimmed structure
+          jq '[.[] | {number, severity: .security_advisory.severity, dependency: .dependency.package.name, manifest: .manifest}]' dependabot-alerts.json > dependabot-trim.json || true
+          cat dependabot-trim.json || true
+          HIGH_COUNT=$(jq '[ .[] | select(.severity == "high") ] | length' dependabot-trim.json 2>/dev/null || echo 0)
+          CRIT_COUNT=$(jq '[ .[] | select(.severity == "critical") ] | length' dependabot-trim.json 2>/dev/null || echo 0)
+          echo "High alerts: $HIGH_COUNT  Critical alerts: $CRIT_COUNT"
+          echo "high=$HIGH_COUNT" >> $GITHUB_OUTPUT
+          echo "critical=$CRIT_COUNT" >> $GITHUB_OUTPUT
+      - name: Enforce Dependabot Policy
+        if: ${{ env.DEPENDABOT_FAIL_ON != 'none' }}
+        run: |
+          set -e
+          TARGET=${DEPENDABOT_FAIL_ON}
+          echo "Policy DEPENDABOT_FAIL_ON=$TARGET"
+          HIGH=$(jq '[ .[] | select(.severity == "high") ] | length' dependabot-trim.json 2>/dev/null || echo 0)
+          CRIT=$(jq '[ .[] | select(.severity == "critical") ] | length' dependabot-trim.json 2>/dev/null || echo 0)
+          if [ "$TARGET" = "critical" ]; then
+            if [ "$CRIT" -gt 0 ]; then echo "Critical Dependabot alerts present: $CRIT" >&2; exit 1; fi
+          elif [ "$TARGET" = "high" ]; then
+            TOTAL=$((HIGH + CRIT))
+            if [ "$TOTAL" -gt 0 ]; then echo "High/Critical Dependabot alerts present: $TOTAL" >&2; exit 1; fi
+          fi
+          echo "Dependabot policy pass"
+      - name: Dependabot Summary Check Run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('dependabot-trim.json')) { core.info('No dependabot-trim.json'); return; }
+            const data = JSON.parse(fs.readFileSync('dependabot-trim.json','utf-8'));
+            const high = data.filter(a=>a.severity==='high').length;
+            const critical = data.filter(a=>a.severity==='critical').length;
+            const body = `Dependabot Alerts Summary\nHigh: ${high}\nCritical: ${critical}\nTotal: ${data.length}`;
+            let conclusion = 'success';
+            if (process.env.DEPENDABOT_FAIL_ON === 'critical' && critical > 0) conclusion='action_required';
+            if (process.env.DEPENDABOT_FAIL_ON === 'high' && (high+critical) > 0) conclusion='action_required';
+            // Fallback SHA selection
+            const sha = (context.payload.pull_request && context.payload.pull_request.head.sha) || context.sha;
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Dependabot Alerts',
+              head_sha: sha,
+              status: 'completed',
+              conclusion,
+              output: { title: 'Dependabot Alert Summary', summary: body, text: body }
+            });
+            core.info('Dependabot summary check run published.');
+      - name: Upload Dependabot Alerts Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-alerts
+          path: |
+            dependabot-alerts.json
+            dependabot-trim.json

@@ -1,0 +1,421 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      update_openapi_baseline:
+        description: "Set to true to regenerate and commit OpenAPI baseline"
+        required: false
+        default: "false"
+      run_performance_benchmark:
+        description: "Set to true to run Locust performance benchmark job"
+        required: false
+        default: "false"
+      locust_users:
+        description: "Number of concurrent simulated users"
+        required: false
+        default: "25"
+      locust_spawn_rate:
+        description: "User spawn rate per second"
+        required: false
+        default: "5"
+      locust_run_time:
+        description: "Test duration (e.g. 1m, 2m, 30s)"
+        required: false
+        default: "1m"
+      perf_regression_tolerance_ms:
+        description: "Allowed increase in median response time (ms) before failing"
+        required: false
+        default: "50"
+      update_performance_baseline:
+        description: "If true, store current run as new performance baseline (creates/updates file)"
+        required: false
+        default: "false"
+
+env:
+  PROMTOOL_VERSION: 2.55.1
+  PROMTOOL_CACHE_KEY: promtool-${{ env.PROMTOOL_VERSION }}-linux-amd64
+  ENABLE_PROFILING: "false"
+  ALLOW_OPENAPI_BREAKING: "false" # Set to true to allow schema path removals without failing CI
+  ALLOW_VULNERABILITIES: "false" # Set to true to allow dependency vulnerabilities without failing CI
+  VULN_SEVERITY_THRESHOLD: "HIGH" # LOW|MEDIUM|HIGH|CRITICAL - minimum severity that fails build
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          pip install ruff pytest bandit pip-audit
+      - name: Ruff Lint
+        run: ruff check .
+      - name: Run Tests
+        run: pytest -q
+      - name: Upload performance smoke metrics (if present)
+        run: |
+          if [ -f perf-metrics/performance_smoke.json ]; then echo "Found metrics"; else echo "No metrics file"; exit 0; fi
+        continue-on-error: true
+      - name: Upload performance smoke artifact
+        if: ${{ hashFiles('perf-metrics/performance_smoke.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-smoke
+          path: perf-metrics/performance_smoke.json
+      - name: Security Scan (Bandit)
+        run: |
+          bandit -q -r . || { echo "Bandit issues detected"; if [ "${ALLOW_VULNERABILITIES}" != "true" ]; then exit 1; else echo "ALLOW_VULNERABILITIES=true -> not failing build"; fi; }
+      - name: Dependency Vulnerability Audit (pip-audit)
+        run: |
+          set -e
+          THRESH=${VULN_SEVERITY_THRESHOLD^^}
+          echo "Severity fail threshold: $THRESH"
+          # Run pip-audit with JSON capture; don't fail immediately
+          pip-audit -f json -o pip_audit_report.json --progress-spinner=off || echo "pip-audit detected vulnerabilities"
+          python scripts/vuln_gate.py
+          if [ -f pip_audit_report.json ]; then echo "pip audit report present"; fi
+      - name: Upload pip-audit report artifact
+        if: ${{ hashFiles('pip_audit_report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip_audit_report.json
+      - name: Cache promtool
+        uses: actions/cache@v4
+        with:
+          path: promtool-bin
+          key: ${{ env.PROMTOOL_CACHE_KEY }}
+      - name: Install promtool
+        run: |
+          if [ ! -f promtool-bin/promtool ]; then \
+            curl -sSL -o /tmp/prom.tar.gz https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz; \
+            tar -xzf /tmp/prom.tar.gz -C /tmp; \
+            mkdir -p promtool-bin; \
+            mv /tmp/prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool promtool-bin/promtool; \
+          fi; \
+          sudo cp promtool-bin/promtool /usr/local/bin/promtool; \
+          promtool --version
+      - name: Validate Prometheus rules (if any)
+        run: |
+          if [ -f docker/prometheus_rules.yml ]; then promtool check rules docker/prometheus_rules.yml; fi
+          if [ -d autogen/monitoring/rules ]; then for f in autogen/monitoring/rules/*.yml; do [ -f "$f" ] && promtool check rules "$f"; done; fi
+      - name: Build Docker image
+        run: docker build -t autogen-advanced-backend:ci .
+      - name: Show image size
+        run: docker images autogen-advanced-backend:ci --format '{{.Repository}}:{{.Tag}} size={{.Size}}'
+      - name: Generate SBOM (syft)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft dir:. -o spdx-json > sbom.spdx.json || echo "SBOM generation failed"
+      - name: Upload SBOM
+        if: ${{ hashFiles('sbom.spdx.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+      - name: License Scan (pip-licenses)
+        run: |
+          pip install pip-licenses
+          pip-licenses --format json --output-file licenses.json || true
+          pip-licenses --format markdown --with-license-file --output-file licenses.md || true
+      - name: Upload Licenses
+        if: ${{ hashFiles('licenses.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-licenses
+          path: |
+            licenses.json
+            licenses.md
+  openapi-diff:
+    runs-on: ubuntu-latest
+    needs: lint-test-build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install FastAPI deps (minimal)
+        run: |
+          pip install fastapi uvicorn pydantic
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+      - name: Generate current OpenAPI schema
+        run: |
+          python - <<'EOF'
+          import json
+          from autogen.advanced_backend import app
+          schema = app.openapi()
+          with open('openapi_schema_current.json','w',encoding='utf-8') as f:
+              json.dump(schema,f,indent=2,ensure_ascii=False)
+          print('Generated openapi_schema_current.json size=', len(json.dumps(schema)))
+          EOF
+      - name: Diff against baseline
+        run: |
+          if [ ! -f openapi_schema_baseline.json ]; then echo 'Baseline missing'; exit 1; fi
+          python - <<'PY'
+          import json, sys, os
+          base = json.load(open('openapi_schema_baseline.json','r',encoding='utf-8'))
+          curr = json.load(open('openapi_schema_current.json','r',encoding='utf-8'))
+
+          def path_set(doc):
+              return set(doc.get('paths', {}).keys())
+
+          added_paths = path_set(curr) - path_set(base)
+          removed_paths = path_set(base) - path_set(curr)
+
+          http_methods = {'get','post','put','delete','patch','options','head','trace'}
+
+          removed_methods = []
+          for p, methods in base.get('paths', {}).items():
+              if p not in curr.get('paths', {}):
+                  continue
+              for m in list(methods.keys()):
+                  if m not in http_methods:
+                      continue
+                  if m not in curr['paths'][p]:
+                      removed_methods.append(f"{p}::{m}")
+
+          schema_prop_removed = []
+          base_schemas = base.get('components', {}).get('schemas', {}) or {}
+
+          curr_schemas = curr.get('components', {}).get('schemas', {}) or {}
+          for name, bdef in base_schemas.items():
+              if name not in curr_schemas:
+                  continue
+              b_props = (bdef.get('properties') or {}).keys()
+              c_props = (curr_schemas[name].get('properties') or {}).keys()
+              for prop in set(b_props) - set(c_props):
+                  schema_prop_removed.append(f"{name}.{prop}")
+
+          breaking_change = bool(removed_paths or removed_methods or schema_prop_removed)
+          report = {
+              'added_paths': sorted(added_paths),
+              'removed_paths': sorted(removed_paths),
+              'removed_methods': sorted(removed_methods),
+              'removed_schema_properties': sorted(schema_prop_removed),
+              'breaking_change': breaking_change
+          }
+          print(json.dumps(report, indent=2))
+          allow = os.getenv('ALLOW_OPENAPI_BREAKING','').lower() in ('1','true','yes')
+          if breaking_change and not allow:
+              print('::error::Breaking OpenAPI changes detected (paths/methods/properties). Set ALLOW_OPENAPI_BREAKING=true to override.')
+              sys.exit(1)
+          elif breaking_change and allow:
+              print('::warning::Breaking OpenAPI changes allowed by ALLOW_OPENAPI_BREAKING flag.')
+          else:
+              # Non-breaking scenario; if purely additive (only added_paths) give a notice
+              if report['added_paths'] and not (report['removed_paths'] or report['removed_methods'] or report['removed_schema_properties']):
+                  print(f"::notice::OpenAPI changes are additive only: {len(report['added_paths'])} new path(s) added.")
+          PY
+
+  update-openapi-baseline:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_openapi_baseline == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install FastAPI deps (minimal)
+        run: |
+          pip install fastapi uvicorn pydantic
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+      - name: Generate new baseline
+        run: |
+          python - <<'EOF'
+          import json
+          from autogen.advanced_backend import app
+          schema = app.openapi()
+          with open('openapi_schema_baseline.json','w',encoding='utf-8') as f:
+              json.dump(schema,f,indent=2,ensure_ascii=False)
+          print('Updated baseline with', len(schema.get('paths',{})), 'paths')
+          EOF
+      - name: Commit baseline
+        run: |
+          if git diff --quiet openapi_schema_baseline.json; then echo 'No changes to baseline'; exit 0; fi
+          BRANCH="chore/update-openapi-baseline-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$BRANCH"
+          git config user.name 'github-actions'
+          git config user.email 'actions@users.noreply.github.com'
+          git add openapi_schema_baseline.json
+          git commit -m 'chore: update OpenAPI baseline'
+          git push origin "$BRANCH"
+      - name: Create Pull Request
+        if: ${{ success() }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: update OpenAPI baseline"
+          title: "chore: update OpenAPI baseline"
+          body: "Automated OpenAPI baseline regeneration triggered via workflow_dispatch."
+          branch: ${{ steps.commit_baseline.outputs.branch || '' }}
+          delete-branch: true
+
+  performance-benchmark:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_performance_benchmark == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          pip install fastapi uvicorn locust
+      - name: Start app (background)
+        run: |
+          python - <<'EOF' &
+          import os
+          from autogen.advanced_backend import app
+          import uvicorn
+          uvicorn.run(app, host='0.0.0.0', port=8000, log_level='warning')
+          EOF
+          echo $! > app_pid
+          sleep 3
+      - name: Run Locust benchmark
+    env:
+      USERS: ${{ inputs.locust_users }}
+      SPAWN: ${{ inputs.locust_spawn_rate }}
+      DURATION: ${{ inputs.locust_run_time }}
+      REG_TOL_MS: ${{ inputs.perf_regression_tolerance_ms }}
+      UPDATE_BASELINE: ${{ inputs.update_performance_baseline }}
+    run: |
+      locust -f perf/locustfile.py --headless -u ${USERS} -r ${SPAWN} -t ${DURATION} --host http://localhost:8000 --csv perf/locust --only-summary || true
+      python - <<'EOF'
+import json, glob, os, sys
+from pathlib import Path
+
+summary = {}
+stats_file = Path('perf/locust_stats.csv')
+median_ms = None
+avg_ms = None
+if stats_file.exists():
+  lines = stats_file.read_text(encoding='utf-8').splitlines()
+  for line in lines:
+    parts = [p.strip() for p in line.split(',')]
+    if len(parts) >= 6 and parts[0] in ('GET','POST'):
+      try:
+        median_ms = float(parts[4])
+        avg_ms = float(parts[5])
+        break
+      except Exception:
+        pass
+summary['sampled_median_ms'] = median_ms
+summary['sampled_average_ms'] = avg_ms
+
+for f in glob.glob('perf/locust*_stats.csv'):
+  summary[Path(f).name] = open(f,'r',encoding='utf-8').read().splitlines()[:5]
+
+baseline_path = Path('perf/performance_baseline.json')
+tolerance = float(os.getenv('REG_TOL_MS','50') or '50')
+regression = False
+if baseline_path.exists() and median_ms is not None:
+  try:
+    baseline = json.load(open(baseline_path,'r',encoding='utf-8'))
+    base_med = baseline.get('sampled_median_ms')
+    if isinstance(base_med,(int,float)):
+      delta = median_ms - base_med
+      summary['baseline_median_ms'] = base_med
+      summary['delta_median_ms'] = delta
+      summary['tolerance_ms'] = tolerance
+      if delta > tolerance:
+        regression = True
+  except Exception as e:
+    summary['baseline_error'] = str(e)
+
+with open('perf/locust_summary.json','w',encoding='utf-8') as fh:
+  json.dump(summary, fh, indent=2)
+
+if os.getenv('UPDATE_BASELINE','false').lower() in ('1','true','yes') and median_ms is not None:
+  baseline_path.parent.mkdir(parents=True, exist_ok=True)
+  json.dump({'sampled_median_ms': median_ms, 'sampled_average_ms': avg_ms}, open(baseline_path,'w',encoding='utf-8'), indent=2)
+  print('Updated performance baseline at', baseline_path)
+
+if regression:
+  print(f"::error::Median latency regression {summary.get('delta_median_ms')}ms exceeds tolerance {tolerance}ms")
+  sys.exit(1)
+elif median_ms is not None and baseline_path.exists():
+  print('Median delta within tolerance or improved.')
+print('Wrote perf/locust_summary.json')
+EOF
+      - name: Upload Locust artifacts
+        if: ${{ hashFiles('perf/locust_summary.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-benchmark
+          path: |
+            perf/locust_summary.json
+            perf/locust_stats.csv
+            perf/locust_failures.csv
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f app_pid ]; then kill $(cat app_pid) || true; fi
+
+  performance-baseline-pr:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_performance_baseline == 'true' }}
+    needs: performance-benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-baseline
+          path: perf
+      - name: Show baseline file
+        run: |
+          ls -l perf || true
+          if [ ! -f perf/performance_baseline.json ]; then echo 'Baseline artifact missing'; exit 1; fi
+      - name: Commit performance baseline
+        id: commit_perf_baseline
+        run: |
+          if git diff --quiet perf/performance_baseline.json 2>/dev/null; then echo 'No changes to performance baseline'; echo "changed=false" >> $GITHUB_OUTPUT; exit 0; fi
+          BRANCH="chore/update-performance-baseline-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$BRANCH"
+          git config user.name 'github-actions'
+          git config user.email 'actions@users.noreply.github.com'
+          git add perf/performance_baseline.json
+            git commit -m 'chore: update performance baseline'
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "changed=true" >> $GITHUB_OUTPUT
+      - name: Create Pull Request
+        if: ${{ steps.commit_perf_baseline.outputs.changed == 'true' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: update performance baseline"
+          title: "chore: update performance baseline"
+          body: "Automated performance baseline update triggered via workflow_dispatch."
+          branch: ${{ steps.commit_perf_baseline.outputs.branch || '' }}
+          delete-branch: true

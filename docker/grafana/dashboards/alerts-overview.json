@@ -1,0 +1,126 @@
+{
+    "title": "Alerts Overview",
+    "uid": "alerts-overview",
+    "version": 1,
+    "links": [
+        {
+            "title": "Alertmanager UI",
+            "url": "http://localhost:9094/",
+            "targetBlank": true
+        },
+        {
+            "title": "Teams sink log",
+            "url": "http://localhost:8010/_teams-sink/log",
+            "targetBlank": true
+        }
+    ],
+    "templating": {
+        "list": [
+            {
+                "type": "query",
+                "name": "severity",
+                "datasource": "Prometheus",
+                "query": "label_values(ALERTS, severity)",
+                "includeAll": true,
+                "multi": true
+            },
+            {
+                "type": "query",
+                "name": "alertname",
+                "datasource": "Prometheus",
+                "query": "label_values(ALERTS, alertname)",
+                "includeAll": true,
+                "multi": true
+            }
+        ]
+    },
+    "panels": [
+        {
+            "title": "Firing alerts (count)",
+            "type": "stat",
+            "targets": [
+                {
+                    "datasource": "Prometheus",
+                    "expr": "sum(ALERTS{alertstate=\"firing\", alertname=~\"$alertname\", severity=~\"$severity\"})"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "none"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 6,
+                "h": 5
+            }
+        },
+        {
+            "title": "AlwaysFiringTest (status)",
+            "type": "stat",
+            "targets": [
+                {
+                    "datasource": "Prometheus",
+                    "expr": "sum(ALERTS{alertstate=\"firing\", alertname=\"AlwaysFiringTest\"})"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": 0
+                            },
+                            {
+                                "color": "green",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 0,
+                "w": 6,
+                "h": 5
+            }
+        },
+        {
+            "title": "Firing alerts by name",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "datasource": "Prometheus",
+                    "expr": "sum by (alertname) (ALERTS{alertstate=\"firing\", alertname=~\"$alertname\", severity=~\"$severity\"})"
+                }
+            ],
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 12,
+                "h": 9
+            }
+        },
+        {
+            "title": "Firing alerts list",
+            "type": "table",
+            "targets": [
+                {
+                    "datasource": "Prometheus",
+                    "expr": "ALERTS{alertstate=\"firing\", alertname=~\"$alertname\", severity=~\"$severity\"}",
+                    "instant": true
+                }
+            ],
+            "gridPos": {
+                "x": 0,
+                "y": 5,
+                "w": 24,
+                "h": 8
+            }
+        }
+    ]
+}

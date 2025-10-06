@@ -1,0 +1,81 @@
+name: security-headers-matrix
+
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.platforms.yml'
+      - 'blockchain_crypto_platform.py'
+      - 'mlops_platform.py'
+      - 'tests/integration/test_security_headers.py'
+      - '.github/workflows/security-headers-matrix.yml'
+  workflow_dispatch: {}
+
+jobs:
+  headers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [direct, traefik]
+    env:
+      PYTEST_ADDOPTS: -q
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements_platforms.txt ]; then pip install -r requirements_platforms.txt; fi
+          pip install pytest requests urllib3 fastapi uvicorn
+
+      - name: Launch services (direct mode)
+        if: matrix.mode == 'direct'
+        run: |
+          nohup python -m uvicorn blockchain_crypto_platform:app --host 0.0.0.0 --port 5205 &
+          nohup python -m uvicorn mlops_platform:app --host 0.0.0.0 --port 5208 &
+          sleep 5
+        env:
+          PLATFORM_API_KEY: testkey
+
+      - name: Run tests (direct mode)
+        if: matrix.mode == 'direct'
+        env:
+          SECURITY_HEADER_URLS: http://localhost:5205/blockchain,http://localhost:5208/mlops
+        run: |
+          pytest tests/integration/test_security_headers.py tests/integration/test_security_headers_negative.py
+
+      - name: Set up Docker (traefik mode)
+        if: matrix.mode == 'traefik'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compose up (traefik mode)
+        if: matrix.mode == 'traefik'
+        run: |
+          docker compose -f docker-compose.platforms.yml up -d --build blockchain-platform mlops-platform traefik
+          # wait for services via curl loop
+          for i in {1..30}; do
+            curl -sk https://localhost:8444/blockchain && curl -sk https://localhost:8444/mlops && break || sleep 2;
+          done
+
+      - name: Run tests (traefik mode)
+        if: matrix.mode == 'traefik'
+        env:
+          SECURITY_HEADER_URLS: https://localhost:8444/blockchain,https://localhost:8444/mlops
+        run: |
+          pytest tests/integration/test_security_headers.py tests/integration/test_security_headers_negative.py
+
+      - name: Dump Traefik logs on failure
+        if: failure() && matrix.mode == 'traefik'
+        run: |
+          docker logs $(docker ps --format '{{.Names}}' | grep traefik) | tail -n 300 || true
+
+      - name: Teardown (traefik mode)
+        if: always() && matrix.mode == 'traefik'
+        run: docker compose -f docker-compose.platforms.yml down -v

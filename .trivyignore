@@ -1,0 +1,9 @@
+# Trivy ignore file (HIGH/CRITICAL still fail unless suppressed here)
+# Add vulnerability IDs (e.g. CVE-2025-12345) one per line.
+# Only ignore when:
+#  - No fixed version exists yet AND
+#  - Exploitability is low or mitigated elsewhere
+# Periodically review and remove stale ignores.
+
+# Example placeholders (commented out):
+# CVE-2024-99999 # low impact in transitive lib, awaiting upstream patch

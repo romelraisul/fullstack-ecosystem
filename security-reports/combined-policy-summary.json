@@ -1,0 +1,13 @@
+﻿{
+    "images":  [
+
+               ],
+    "scan_date":  "2025-10-03T18:01:24Z",
+    "overall_pass":  true,
+    "total_vulnerabilities":  {
+                                  "low":  0,
+                                  "critical":  0,
+                                  "medium":  0,
+                                  "high":  0
+                              }
+}

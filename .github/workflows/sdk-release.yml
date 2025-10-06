@@ -1,0 +1,76 @@
+name: sdk-release
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch: {}
+
+jobs:
+    build-sdks:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: Install OpenAPI Generator
+              run: npm install @openapitools/openapi-generator-cli -g
+
+            - name: Export OpenAPI schema
+              run: |
+                  python scripts/export_openapi_schema.py --out openapi-governance.json
+
+            - name: Generate Python SDK
+              run: |
+                  openapi-generator-cli generate -i openapi-governance.json -g python -o clients/python --additional-properties=packageName=governance_client
+
+            - name: Generate TypeScript SDK
+              run: |
+                  openapi-generator-cli generate -i openapi-governance.json -g typescript-fetch -o clients/typescript
+
+            - name: Build Python package
+              run: |
+                  python -m pip install --upgrade build twine
+                  cd clients/python
+                  python -m build
+
+            - name: Publish Python package
+              if: startsWith(github.ref, 'refs/tags/v')
+              env:
+                  TWINE_USERNAME: __token__
+                  TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+              run: |
+                  cd clients/python/dist
+                  twine upload --non-interactive *
+
+            - name: Prepare npm package
+              run: |
+                  jq '.name="@${{ github.repository_owner }}/governance-client" | .version="'${GITHUB_REF##*/}'"' clients/typescript/package.json > clients/typescript/package.tmp && mv clients/typescript/package.tmp clients/typescript/package.json || true
+                  cd clients/typescript
+                  npm version --no-git-tag-version ${GITHUB_REF##*/} || true
+
+            - name: Publish npm package
+              if: startsWith(github.ref, 'refs/tags/v')
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: |
+                  cd clients/typescript
+                  npm publish --access public
+
+            - name: Upload SDK artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release-sdks
+                  path: |
+                      clients/python/dist
+                      clients/typescript

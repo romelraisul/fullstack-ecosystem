@@ -1,0 +1,113 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "alerts_report.schema.json",
+    "title": "Alert Rules Validation Report",
+    "type": "object",
+    "required": [
+        "schema_version",
+        "errors",
+        "warnings",
+        "info",
+        "alerts_checked",
+        "required_labels",
+        "taxonomy_size",
+        "error_count",
+        "warning_count",
+        "per_alert"
+    ],
+    "properties": {
+        "schema_version": {
+            "type": "integer",
+            "enum": [
+                2
+            ]
+        },
+        "errors": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "warnings": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "info": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "alerts_checked": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "required_labels": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "taxonomy_size": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "error_count": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "warning_count": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "per_alert": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "required": [
+                    "missing_required_labels",
+                    "label_mismatches"
+                ],
+                "properties": {
+                    "missing_required_labels": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "label_mismatches": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "required": [
+                                "rule",
+                                "taxonomy"
+                            ],
+                            "properties": {
+                                "rule": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "taxonomy": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "additionalProperties": true
+            }
+        }
+    },
+    "additionalProperties": true
+}

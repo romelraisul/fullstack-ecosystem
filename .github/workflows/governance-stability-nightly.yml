@@ -1,0 +1,122 @@
+name: governance-stability-nightly
+
+on:
+  schedule:
+    - cron: "15 3 * * *" # Run daily at 03:15 UTC
+  workflow_dispatch:
+    inputs:
+      stability_window:
+        description: "Override rolling window size (optional)"
+        required: false
+        default: "30"
+      stability_alert_threshold:
+        description: "Override alert threshold (0-1)"
+        required: false
+        default: "0.8"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: governance-stability-nightly
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh Stability Metrics
+    runs-on: ubuntu-latest
+    env:
+      STABILITY_WINDOW: ${{ github.event.inputs.stability_window || '30' }}
+      STABILITY_ALERT_THRESHOLD: ${{ github.event.inputs.stability_alert_threshold || '0.8' }}
+      PRIMARY_PUBLISH_PY: "3.12"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure status history branch
+        run: |
+          git fetch origin schemas:refs/remotes/origin/schemas || true
+          if git show-ref --quiet refs/remotes/origin/schemas; then
+            git checkout schemas
+          else
+            git checkout --orphan schemas
+          fi
+          mkdir -p status
+          if [ ! -f status/history.jsonl ]; then touch status/history.jsonl; fi
+
+      - name: Write synthetic stable status
+        run: |
+          printf '%s' '{"breaking": false, "synthetic": true}' > stable-status.json
+
+      - name: Generate stability metrics
+        run: |
+          python scripts/generate_stability_metrics.py \
+            --history status/history.jsonl \
+            --current-status stable-status.json \
+            --output-metrics stability-metrics.json \
+            --badge-json stability-badge.json \
+            --window $STABILITY_WINDOW
+
+      - name: Safeguard metrics
+        run: |
+          if [ ! -f stability-metrics.json ]; then
+            echo 'Missing stability-metrics.json; writing placeholder'
+            printf '%s' '{"window_stability_ratio":1.0,"placeholder":true}' > stability-metrics.json
+          fi
+
+      - name: Commit refreshed metrics
+        run: |
+          cp stability-metrics.json status/stability-metrics.json
+          cp stability-badge.json status/stability-badge.json
+          git add status/stability-metrics.json status/stability-badge.json status/history.jsonl || true
+          if git diff --cached --quiet; then
+            echo 'No metric changes to commit'
+          else
+            git commit -m 'chore(status): nightly stability metrics refresh'
+            git push origin schemas
+          fi
+
+      - name: Send governance webhook
+        env:
+          GOVERNANCE_WEBHOOK_URL: ${{ secrets.GOVERNANCE_WEBHOOK_URL }}
+          GOVERNANCE_WEBHOOK_SECRET: ${{ secrets.GOVERNANCE_WEBHOOK_SECRET }}
+          SEMVER_STATUS: "ok"
+        run: |
+          # Create operations classification if missing
+          if [ ! -f operations-classification.json ]; then
+            echo '{"added": [], "removed": []}' > operations-classification.json
+          fi
+
+          # Send webhook notification
+          python scripts/send_governance_webhook.py \
+            --metrics stability-metrics.json \
+            --operations operations-classification.json \
+            --verbose || echo "Webhook delivery failed (non-blocking)"
+
+      - name: Degradation alert (nightly)
+        uses: actions/github-script@v7
+        env:
+          STABILITY_ALERT_THRESHOLD: ${{ env.STABILITY_ALERT_THRESHOLD }}
+        with:
+          script: |
+            const fs = require('fs');
+            const threshold = parseFloat(process.env.STABILITY_ALERT_THRESHOLD || '0.8');
+            if (!fs.existsSync('stability-metrics.json')) { core.info('No metrics file'); return; }
+            let metrics = {};
+            try { metrics = JSON.parse(fs.readFileSync('stability-metrics.json','utf8')); } catch(e) { core.warning('Parse fail'); return; }
+            const ratio = metrics.window_stability_ratio;
+            if (ratio === undefined) return;
+            if (ratio >= threshold) { core.info(`Ratio ${ratio} >= ${threshold}`); return; }
+            const title = `API stability degradation alert (nightly) ${ratio.toFixed(2)}`;
+            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            const exists = issues.find(i => i.title.startsWith('API stability degradation alert'));
+            if (exists) { core.info('Alert already open'); return; }
+            let body = `Nightly job detected stability ratio ${ratio.toFixed(3)} below threshold ${threshold}.\n`;
+            body += '\nMetrics JSON:```json\n' + JSON.stringify(metrics, null, 2) + '\n```';
+            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['api-stability','automated','alert'] });

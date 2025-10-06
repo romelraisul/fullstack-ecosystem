@@ -1,0 +1,233 @@
+# promtool unit test file for selected alert rules
+# Reference: https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/
+
+rule_files:
+  - prometheus_rules.yml
+
+evaluation_interval: 1m
+
+# Define minimal series to exercise error budget burn & high error alerts
+# Using synthetic patterns; metric names must align with expressions in prometheus_rules.yml
+
+tests:
+  - interval: 1m
+    # Fast burn scenario: per-agent error_rate_5m & 1h both at 0.14 when budget is 0.01 -> 14x multiplier
+    input_series:
+      - series: 'agent:error_rate_5m{agent="alpha"}'
+        values: 0.14+0x10
+      - series: 'agent:error_rate_1h{agent="alpha"}'
+        values: 0.14+0x10
+      - series: 'agent_error_budget_fraction{agent="alpha"}'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              agent: alpha
+              severity: critical
+              slo: error-burn-fast
+            exp_annotations:
+              summary: 'Agent alpha fast error budget burn'
+              description: 'Burn rate >14x budget on 5m & 1h windows'
+
+  - interval: 1m
+    # Slow burn scenario: per-agent error_rate_30m & 6h at 0.061 with budget 0.01 -> 6.1x multiplier
+    input_series:
+      - series: 'agent:error_rate_30m{agent="beta"}'
+        values: 0.061+0x40
+      - series: 'agent:error_rate_6h{agent="beta"}'
+        values: 0.061+0x40
+      - series: 'agent_error_budget_fraction{agent="beta"}'
+        values: 0.01+0x40
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AgentErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              agent: beta
+              severity: warning
+              slo: error-burn-slow
+            exp_annotations:
+              summary: 'Agent beta slow error budget burn'
+              description: 'Burn rate >6x budget on 30m & 6h windows'
+
+  - interval: 1m
+    # Fleet fast burn scenario: aggregated fleet error rate 5m & 1h at 0.14 vs fleet budget 0.01
+    input_series:
+      - series: 'agent:fleet:error_rate_5m'
+        values: 0.14+0x10
+      - series: 'agent:fleet:error_rate_1h'
+        values: 0.14+0x10
+      - series: 'agent_fleet_error_budget_fraction'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentFleetErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: error-burn-fast
+              scope: fleet
+            exp_annotations:
+              summary: 'Fleet fast error budget burn'
+              description: 'Fleet burn rate >14x budget on 5m & 1h windows'
+
+  - interval: 1m
+    # Error acceleration scenario: 5m error rate > budget and >2x 30m baseline
+    input_series:
+      - series: 'agent:error_rate_5m{agent="gamma"}'
+        values: 0.03+0x10
+      - series: 'agent:error_rate_30m{agent="gamma"}'
+        values: 0.01+0x10
+      - series: 'agent_error_budget_fraction{agent="gamma"}'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentErrorBurnFast
+        exp_alerts:
+          - exp_labels:
+              agent: gamma
+              severity: warning
+              slo: error-burn
+            exp_annotations:
+              summary: 'Agent gamma error rate accelerating (fast burn)'
+              description: '5m error rate > budget AND >2x 30m baseline'
+
+  - interval: 1m
+    # p95 latency high alert scenario (AgentP95LatencyHigh) using sample agent label 'academic_research'.
+    input_series:
+      # Use the generic unified recording rule metric with 'agent' label (5m window)
+      - series: 'agent:p95_latency_seconds_5m{agent="academic"}'
+        values: 0.55+0x15
+      - series: 'agent_latency_p95_warning_seconds{agent="academic"}'
+        values: 0.5+0x15
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentP95LatencyHigh
+        exp_alerts:
+          - exp_labels:
+              agent: academic
+              severity: warning
+              slo: latency
+            exp_annotations:
+              summary: 'Agent academic p95 latency high (warning)'
+              description: 'p95 latency 0.55s > warning threshold for 5m'
+
+  - interval: 1m
+    # Latency burn fast scenario (AgentLatencyBurnFast) - short window elevated vs 30m baseline.
+    input_series:
+      - series: 'agent:p95_latency_seconds_5m{agent="academic"}'
+        values: 0.80+0x10
+      - series: 'agent:p95_latency_seconds_30m{agent="academic"}'
+        values: 0.50+0x10
+      - series: 'agent_latency_p95_warning_seconds{agent="academic"}'
+        values: 0.5+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentLatencyBurnFast
+        exp_alerts:
+          - exp_labels:
+              agent: academic
+              severity: warning
+              slo: latency-burn
+            exp_annotations:
+              summary: 'Agent academic latency accelerating (fast burn)'
+              description: '5m p95 > 1.2x warning threshold and >30% above 30m baseline'
+
+  - interval: 1m
+    # Negative scenario: latency high NOT firing because value below warning threshold
+    input_series:
+      - series: 'agent:p95_latency_seconds_5m{agent="academic"}'
+        values: 0.45+0x10
+      - series: 'agent_latency_p95_warning_seconds{agent="academic"}'
+        values: 0.5+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentP95LatencyHigh
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: latency burn NOT firing (5m above threshold multiplier but not 30% above 30m baseline)
+    input_series:
+      - series: 'agent:p95_latency_seconds_5m{agent="academic"}'
+        values: 0.62+0x10
+      - series: 'agent:p95_latency_seconds_30m{agent="academic"}'
+        values: 0.60+0x10
+      - series: 'agent_latency_p95_warning_seconds{agent="academic"}'
+        values: 0.5+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentLatencyBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: error budget fast burn NOT firing (one window below threshold)
+    input_series:
+      - series: 'agent:error_rate_5m{agent="delta"}'
+        values: 0.13+0x10
+      - series: 'agent:error_rate_1h{agent="delta"}'
+        values: 0.13+0x10
+      - series: 'agent_error_budget_fraction{agent="delta"}'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentErrorBudgetBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: slow burn NOT firing (30m window meets exactly but 6h below multiplier)
+    input_series:
+      - series: 'agent:error_rate_30m{agent="epsilon"}'
+        values: 0.06+0x40
+      - series: 'agent:error_rate_6h{agent="epsilon"}'
+        values: 0.05+0x40
+      - series: 'agent_error_budget_fraction{agent="epsilon"}'
+        values: 0.01+0x40
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AgentErrorBudgetBurnSlow
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: error acceleration NOT firing (5m rate above budget but NOT >2x 30m baseline)
+    input_series:
+      - series: 'agent:error_rate_5m{agent="zeta"}'
+        values: 0.021+0x10
+      - series: 'agent:error_rate_30m{agent="zeta"}'
+        values: 0.011+0x10
+      - series: 'agent_error_budget_fraction{agent="zeta"}'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentErrorBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: fleet fast burn NOT firing (5m passes, 1h below threshold)
+    input_series:
+      - series: 'agent:fleet:error_rate_5m'
+        values: 0.14+0x10
+
+      - series: 'agent:fleet:error_rate_1h'
+        values: 0.13+0x10
+      - series: 'agent_fleet_error_budget_fraction'
+        values: 0.01+0x10
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AgentFleetErrorBudgetBurnFast
+        exp_alerts: []
+
+  - interval: 1m
+    # Negative scenario: fleet slow burn NOT firing (30m passes, 6h below threshold)
+    input_series:
+      - series: 'agent:fleet:error_rate_30m'
+        values: 0.061+0x40
+      - series: 'agent:fleet:error_rate_6h'
+        values: 0.059+0x40
+      - series: 'agent_fleet_error_budget_fraction'
+        values: 0.01+0x40
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AgentFleetErrorBudgetBurnSlow
+        exp_alerts: []

@@ -1,0 +1,122 @@
+name: Alert Taxonomy
+
+concurrency:
+  group: taxonomy-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "alerts_taxonomy.json"
+      - "scripts/sync_alert_taxonomy.py"
+      - ".github/workflows/taxonomy.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "alerts_taxonomy.json"
+      - "scripts/sync_alert_taxonomy.py"
+      - "alerts_taxonomy.schema.json"
+      - "scripts/validate_taxonomy_schema.py"
+
+# Provide empty defaults to silence undefined secret/env warnings for optional integrations
+env:
+  TAXONOMY_WEBHOOK_URL: ""
+  OPTIONAL_SLACK_WEBHOOK: ""
+
+jobs:
+  taxonomy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements-*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-taxonomy.txt
+
+      - name: Run unit tests
+        run: |
+          pip install pytest
+          pytest -q
+
+      - name: Schema validation
+        run: |
+          python scripts/validate_taxonomy_schema.py
+
+      - name: Lint taxonomy
+        run: |
+          python scripts/sync_alert_taxonomy.py \
+            --rules docker/prometheus_rules.yml \
+            --taxonomy alerts_taxonomy.json \
+            --lint --check
+
+      - name: Emit docs (markdown/jsonl/html)
+        run: |
+          python scripts/sync_alert_taxonomy.py \
+            --taxonomy alerts_taxonomy.json \
+            --emit-markdown docs/alerts_taxonomy.generated.md \
+            --emit-jsonl docs/alerts_annotations.jsonl \
+            --emit-html docs/alerts_taxonomy.html
+
+      - name: Generate taxonomy changelog
+        run: |
+          python scripts/generate_alerts_changelog.py --out docs/alerts_taxonomy.changelog.md
+
+      - name: Generate metrics (for enforcement)
+        run: |
+          python scripts/generate_taxonomy_metrics.py
+
+      - name: Enforce runbook completeness threshold
+        env:
+          RUNBOOK_MIN_PERCENT: ${{ env.RUNBOOK_MIN_PERCENT || '90' }}
+        run: |
+          python scripts/enforce_runbook_threshold.py
+
+      - name: Trend regression test (churn/risk)
+        env:
+          MAX_CHURN_DELTA: ${{ env.MAX_CHURN_DELTA || '5' }}
+          MAX_RISK_CHURN_DELTA: ${{ env.MAX_RISK_CHURN_DELTA || '10' }}
+        run: |
+          python scripts/test_metrics_trend.py
+
+      - name: Append changelog to committed file
+        run: |
+          CHG=docs/alerts_taxonomy.changelog.md
+          if grep -q "No changes vs previous commit." "$CHG"; then
+            echo "No meaningful changes; skip changelog commit";
+          else
+            echo -e "\n## $(date -u +%Y-%m-%dT%H:%M:%SZ)\n" >> ALERTS_CHANGELOG.md || touch ALERTS_CHANGELOG.md
+            cat "$CHG" >> ALERTS_CHANGELOG.md
+            git config user.email "actions@github"; git config user.name "github-actions";
+            git add ALERTS_CHANGELOG.md
+            git commit -m "chore(alerts): update ALERTS_CHANGELOG.md" || echo "No diff to commit"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: taxonomy-docs
+          path: |
+            docs/alerts_taxonomy.generated.md
+            docs/alerts_annotations.jsonl
+            docs/alerts_taxonomy.html
+            docs/alerts_taxonomy.changelog.md
+            taxonomy-metrics.json
+          retention-days: 7

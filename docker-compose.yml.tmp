@@ -1,0 +1,192 @@
+﻿services:
+  api:
+    build: ./backend
+    container_name: ecosystem_api
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    environment:
+      - UVICORN_WORKERS=8
+      - QCAE_BASE=http://qcae:5106
+      - QDC_BASE=http://quantum_deployment_center:5065
+      - QCMS_BASE=http://quantum_consciousness_merger:5081
+      - QCC_BASE=http://quantum_computing_center:5053
+      - GATEWAY_BASE=http://gateway
+      - API_INTERNAL_BASE=http://api:8000
+      - ASSUME_HEALTH_READY=false
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').getcode()==200 else 1)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: ["net"]
+  web:
+    build: ./frontend
+    container_name: ecosystem_web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks: ["net"]
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ecosystem_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--web.enable-lifecycle",
+        "--web.enable-admin-api",
+        "--web.external-url=http://localhost:5125/prometheus",
+        "--web.route-prefix=/prometheus",
+      ]
+    networks: ["net"]
+    depends_on:
+      - alertmanager
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:9090/prometheus/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ecosystem_grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    volumes:
+      - ./docker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/dashboards:/etc/grafana/custom-dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks: ["net"]
+    env_file:
+      - ./docker/grafana/grafana.env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ecosystem_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9094:9093"
+    volumes:
+      - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: ["net"]
+    command:
+      [
+        "--config.file=/etc/alertmanager/alertmanager.yml",
+        "--storage.path=/alertmanager",
+        "--web.external-url=http://localhost:5125/alertmanager/",
+        "--web.route-prefix=/alertmanager",
+      ]
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:9093/alertmanager/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  msteams:
+    image: quay.io/prometheusmsteams/prometheus-msteams:latest
+    container_name: ecosystem_msteams
+    restart: unless-stopped
+    environment:
+      - TEAMS_INCOMING_WEBHOOK_URL=http://api:8000/_teams-sink
+      - TEAMS_REQUEST_URI=alertmanager
+    ports:
+      - "2000:2000"
+    networks: ["net"]
+  quantum_computing_center:
+    build:
+      context: ..
+      dockerfile: ./fullstack-ecosystem/docker/quantum/Dockerfile.qcc
+    container_name: quantum_computing_center
+    restart: unless-stopped
+    ports:
+      - "5053:5053"
+    networks: ["net"]
+  quantum_consciousness_merger:
+    build:
+      context: ..
+      dockerfile: ./fullstack-ecosystem/docker/quantum/Dockerfile.qcms
+    container_name: quantum_consciousness_merger
+    restart: unless-stopped
+    ports:
+      - "5081:5081"
+    networks: ["net"]
+  quantum_deployment_center:
+    build:
+      context: ..
+      dockerfile: ./fullstack-ecosystem/docker/quantum/Dockerfile.qdc
+    container_name: quantum_deployment_center
+    restart: unless-stopped
+    ports:
+      - "5065:5065"
+    networks: ["net"]
+  quantum_index:
+    image: nginx:alpine
+    container_name: quantum_index
+    restart: unless-stopped
+    ports:
+      - "5088:80"
+    volumes:
+      - ./quantum/index:/usr/share/nginx/html:ro
+    networks: ["net"]
+  qcae:
+    build:
+      context: ..
+      dockerfile: ./fullstack-ecosystem/docker/quantum/Dockerfile.qcae
+    container_name: quantum_cae
+    restart: unless-stopped
+    ports:
+      - "5106:5106"
+    environment:
+      - QCAE_MAX_SHOTS=10000
+      - QCAE_MAX_OPS=256
+      - QCAE_MAX_QUBITS=16
+    volumes:
+      - ../quantum_computing_acceleration_enhanced.py:/app/quantum_computing_acceleration_enhanced.py:ro
+    networks: ["net"]
+  gateway:
+    image: nginx:alpine
+    container_name: ecosystem_gateway
+    restart: unless-stopped
+    ports:
+      - "5125:80"
+    volumes:
+      - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/gateway/index.html:/usr/share/nginx/html/index.html:ro
+      - ./docker/gateway/systems.html:/usr/share/nginx/html/systems.html:ro
+      - ./docker/gateway/dashboard-5099.html:/usr/share/nginx/html/dashboard-5099.html:ro
+      - ./docker/gateway/.htpasswd:/etc/nginx/.htpasswd:ro
+    networks: ["net"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+networks:
+  net:
+    driver: bridge
+volumes:
+  prometheus-data:
+  grafana-data:

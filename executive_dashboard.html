@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Governance - Executive Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .metric-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .trend-up {
+            color: #10b981;
+        }
+
+        .trend-down {
+            color: #ef4444;
+        }
+
+        .trend-stable {
+            color: #6b7280;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 font-sans">
+    <!-- Header -->
+    <header class="gradient-bg text-white py-6 px-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold">AI Governance Platform</h1>
+                <p class="text-blue-100 mt-1">Executive Analytics Dashboard</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="text-right">
+                    <p class="text-sm text-blue-100">Last Updated</p>
+                    <p class="font-semibold" id="lastUpdated">Loading...</p>
+                </div>
+                <button onclick="refreshDashboard()"
+                    class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition-all">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Key Metrics Grid -->
+    <section class="px-8 py-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Code Quality Score -->
+            <div class="metric-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="bg-blue-100 p-3 rounded-lg">
+                        <i class="fas fa-code text-blue-600 text-xl"></i>
+                    </div>
+                    <span class="trend-indicator text-sm font-medium">
+                        <i class="fas fa-arrow-up"></i> +2.3%
+                    </span>
+                </div>
+                <h3 class="text-gray-600 text-sm font-medium">Code Quality Score</h3>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="qualityScore">85.7</p>
+                <p class="text-xs text-gray-500 mt-2">Industry benchmark: 78.2</p>
+            </div>
+
+            <!-- Security Issues -->
+            <div class="metric-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="bg-red-100 p-3 rounded-lg">
+                        <i class="fas fa-shield-alt text-red-600 text-xl"></i>
+                    </div>
+                    <span class="trend-indicator text-sm font-medium">
+                        <i class="fas fa-arrow-down"></i> -45%
+                    </span>
+                </div>
+                <h3 class="text-gray-600 text-sm font-medium">Security Issues</h3>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="securityIssues">3</p>
+                <p class="text-xs text-gray-500 mt-2">23 prevented this week</p>
+            </div>
+
+            <!-- Deployment Success -->
+            <div class="metric-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="bg-green-100 p-3 rounded-lg">
+                        <i class="fas fa-rocket text-green-600 text-xl"></i>
+                    </div>
+                    <span class="trend-indicator text-sm font-medium">
+                        <i class="fas fa-arrow-up"></i> +1.2%
+                    </span>
+                </div>
+                <h3 class="text-gray-600 text-sm font-medium">Deployment Success</h3>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="deploymentSuccess">96.8%</p>
+                <p class="text-xs text-gray-500 mt-2">Target: 95%</p>
+            </div>
+
+            <!-- Cost Savings -->
+            <div class="metric-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="bg-purple-100 p-3 rounded-lg">
+                        <i class="fas fa-dollar-sign text-purple-600 text-xl"></i>
+                    </div>
+                    <span class="trend-indicator text-sm font-medium">
+                        <i class="fas fa-arrow-up"></i> +18%
+                    </span>
+                </div>
+                <h3 class="text-gray-600 text-sm font-medium">Monthly Savings</h3>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="costSavings">$35,200</p>
+                <p class="text-xs text-gray-500 mt-2">ROI: 340%</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="px-8 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Quality Trend Chart -->
+            <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Code Quality Trend</h3>
+                <canvas id="qualityTrendChart" height="200"></canvas>
+            </div>
+
+            <!-- Security Incidents Chart -->
+            <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Security Incidents by Type</h3>
+                <canvas id="securityChart" height="200"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Executive Summary -->
+    <section class="px-8 py-6">
+        <div class="bg-white rounded-xl p-6 shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-900 mb-6">Executive Summary - Last 7 Days</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="text-center">
+                    <p class="text-3xl font-bold text-blue-600" id="totalRepos">12</p>
+                    <p class="text-sm text-gray-600">Repositories Monitored</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-3xl font-bold text-green-600" id="linesAnalyzed">180K</p>
+                    <p class="text-sm text-gray-600">Lines of Code Analyzed</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-3xl font-bold text-purple-600" id="vulnerabilitiesPrevented">23</p>
+                    <p class="text-sm text-gray-600">Vulnerabilities Prevented</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">
+                        <i class="fas fa-lightbulb text-yellow-500 mr-2"></i>Key Insights
+                    </h4>
+                    <ul class="space-y-2" id="keyInsights">
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">AI-powered code analysis identified 23 potential security
+                                vulnerabilities before deployment</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">Automated governance checks reduced manual review time by
+                                65%</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">ML recommendations improved code quality scores by 12% across
+                                all teams</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">
+                        <i class="fas fa-tasks text-green-500 mr-2"></i>Recommendations
+                    </h4>
+                    <ul class="space-y-2" id="recommendations">
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">Expand AI governance to mobile development teams for additional
+                                security coverage</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">Implement advanced ML models for predictive quality
+                                scoring</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                            <span class="text-gray-700">Integrate governance metrics into sprint planning and team
+                                retrospectives</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Team Performance Section -->
+    <section class="px-8 py-6">
+        <div class="bg-white rounded-xl p-6 shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-900 mb-6">Team Performance Overview</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-3 px-4 font-semibold text-gray-700">Team</th>
+                            <th class="text-left py-3 px-4 font-semibold text-gray-700">Quality Score</th>
+                            <th class="text-left py-3 px-4 font-semibold text-gray-700">Security Issues</th>
+                            <th class="text-left py-3 px-4 font-semibold text-gray-700">Deployments</th>
+                            <th class="text-left py-3 px-4 font-semibold text-gray-700">Trend</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teamPerformance">
+                        <tr class="border-b border-gray-100">
+                            <td class="py-3 px-4">Frontend Team</td>
+                            <td class="py-3 px-4"><span
+                                    class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">92.1</span></td>
+                            <td class="py-3 px-4"><span class="text-green-600">0</span></td>
+                            <td class="py-3 px-4">14 (100%)</td>
+                            <td class="py-3 px-4"><i class="fas fa-arrow-up text-green-500"></i></td>
+                        </tr>
+                        <tr class="border-b border-gray-100">
+                            <td class="py-3 px-4">Backend Team</td>
+                            <td class="py-3 px-4"><span
+                                    class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">88.7</span></td>
+                            <td class="py-3 px-4"><span class="text-yellow-600">1</span></td>
+                            <td class="py-3 px-4">22 (95.5%)</td>
+                            <td class="py-3 px-4"><i class="fas fa-arrow-up text-green-500"></i></td>
+                        </tr>
+                        <tr class="border-b border-gray-100">
+                            <td class="py-3 px-4">DevOps Team</td>
+                            <td class="py-3 px-4"><span
+                                    class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">85.3</span>
+                            </td>
+                            <td class="py-3 px-4"><span class="text-red-600">2</span></td>
+                            <td class="py-3 px-4">8 (87.5%)</td>
+                            <td class="py-3 px-4"><i class="fas fa-minus text-gray-500"></i></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Conversation UI Section -->
+    <section class="px-8 py-6">
+        <div class="bg-white rounded-xl p-6 shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-900 mb-6">Conversation (Agent Chat)</h3>
+            <div id="conversationBox" class="bg-gray-100 rounded-lg p-4 h-64 overflow-y-auto mb-4 text-gray-800">
+                <div class="text-gray-400 text-center">No messages yet. Replies will appear here.</div>
+            </div>
+            <form id="conversationForm" class="flex gap-2">
+                <input id="conversationInput" type="text" placeholder="Type your message..."
+                    class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    autocomplete="off" />
+                <button type="submit"
+                    class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">Send</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Analytics Charts Section -->
+    <section class="px-8 py-6">
+        <div class="bg-white rounded-xl p-6 shadow-lg">
+            <h3 class="text-xl font-semibold text-gray-900 mb-6">Analytics: Conversations & Top Agents</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-800 mb-2">Conversation Volume</h4>
+                    <canvas id="conversationVolumeChart" height="180"></canvas>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-800 mb-2">Top Agents</h4>
+                    <canvas id="topAgentsChart" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ML / LLM Capabilities Section -->
+    <section class="px-8 py-6">
+        <div class="bg-white rounded-xl p-6 shadow-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-gray-900">ML / LLM Capabilities</h3>
+                <button id="refreshCapabilities"
+                    class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                    title="Refresh capabilities">Reload</button>
+            </div>
+            <div id="capabilitiesFlags" class="text-sm text-gray-600 mb-4">Loading flags...</div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full" id="capabilitiesTable">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2 px-3 font-semibold text-gray-700">Dependency</th>
+                            <th class="text-left py-2 px-3 font-semibold text-gray-700">Available</th>
+                        </tr>
+                    </thead>
+                    <tbody id="capabilitiesBody">
+                        <tr>
+                            <td class="py-2 px-3" colspan="2" class="text-gray-500">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="capabilitiesError" class="text-sm text-red-600 mt-3 hidden"></p>
+        </div>
+    </section>
+
+    <script>
+        // Initialize charts and data
+        let qualityChart, securityChart, conversationVolumeChart, topAgentsChart;
+
+        function initializeCharts() {
+            // Quality Trend Chart
+            const qualityCtx = document.getElementById('qualityTrendChart').getContext('2d');
+            qualityChart = new Chart(qualityCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Quality Score',
+                        data: [82, 84, 86, 85, 88, 87, 89],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: 70,
+                            max: 100
+                        }
+                    }
+                }
+            });
+
+            // Security Chart
+            const securityCtx = document.getElementById('securityChart').getContext('2d');
+            securityChart = new Chart(securityCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['SQL Injection', 'XSS', 'CSRF', 'Auth Issues', 'Other'],
+                    datasets: [{
+                        data: [8, 5, 3, 4, 3],
+                        backgroundColor: [
+                            '#ef4444',
+                            '#f97316',
+                            '#eab308',
+                            '#84cc16',
+                            '#06b6d4'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Conversation Volume Chart (Bar) - initially empty, will be updated with live data
+            const convVolCtx = document.getElementById('conversationVolumeChart').getContext('2d');
+            conversationVolumeChart = new Chart(convVolCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Conversations',
+                        data: [],
+                        backgroundColor: '#6366f1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // Top Agents Chart (Horizontal Bar) - initially empty, will be updated with live data
+            const topAgentsCtx = document.getElementById('topAgentsChart').getContext('2d');
+            topAgentsChart = new Chart(topAgentsCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Messages',
+                        data: [],
+                        backgroundColor: '#10b981'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { beginAtZero: true }
+                    }
+                }
+            });
+            // Load live analytics data for charts
+            updateAnalyticsCharts();
+        }
+
+        async function updateAnalyticsCharts() {
+            try {
+                // Fetch agent performance analytics (for top agents and conversation volume)
+                const resp = await fetch('/api/v2/analytics/agents/performance');
+                const data = await resp.json();
+
+                // Conversation Volume: group conversations by day (last 7 days)
+                // If backend does not provide per-day, use total as a single bar
+                let convLabels = [];
+                let convData = [];
+                if (data.conversation_volume_by_day) {
+                    // If backend provides per-day breakdown
+                    convLabels = data.conversation_volume_by_day.labels;
+                    convData = data.conversation_volume_by_day.data;
+                } else {
+                    // Fallback: show total conversations as a single bar
+                    convLabels = ['Total'];
+                    convData = [data.total_conversations || 0];
+                }
+                conversationVolumeChart.data.labels = convLabels;
+                conversationVolumeChart.data.datasets[0].data = convData;
+                conversationVolumeChart.update();
+
+                // Top Agents: sort by conversations/messages
+                const agentStats = data.agent_performance || {};
+                const sortedAgents = Object.entries(agentStats)
+                    .sort((a, b) => (b[1].conversations || 0) - (a[1].conversations || 0))
+                    .slice(0, 5);
+                const agentLabels = sortedAgents.map(([id, stat]) => stat.name || id);
+                const agentData = sortedAgents.map(([id, stat]) => stat.conversations || 0);
+                topAgentsChart.data.labels = agentLabels;
+                topAgentsChart.data.datasets[0].data = agentData;
+                topAgentsChart.update();
+            } catch (err) {
+                // Show empty state or fallback
+                conversationVolumeChart.data.labels = ['N/A'];
+                conversationVolumeChart.data.datasets[0].data = [0];
+                conversationVolumeChart.update();
+                topAgentsChart.data.labels = ['N/A'];
+                topAgentsChart.data.datasets[0].data = [0];
+                topAgentsChart.update();
+                console.error('Failed to load analytics chart data:', err);
+            }
+        }
+
+        async function loadDashboardData() {
+            try {
+                // Fetch system overview
+                const overviewResp = await fetch('/api/v1/dashboard/overview');
+                const overview = await overviewResp.json();
+
+                // Fetch service stats
+                const servicesResp = await fetch('/api/v1/dashboard/services');
+                const services = await servicesResp.json();
+
+                // Fetch analytics (for trends, etc.)
+                const analyticsResp = await fetch('/api/v1/dashboard/analytics');
+                const analytics = await analyticsResp.json();
+
+                // Example mapping: update metrics (customize as needed)
+                // Code Quality Score: use analytics.overview.status or a relevant metric
+                document.getElementById('qualityScore').textContent = analytics.overview.status === 'healthy' ? '90+' : '80+';
+
+                // Security Issues: count alerts with severity 'critical' or 'high'
+                const securityIssues = analytics.alerts.filter(a => a.severity === 'critical' || a.severity === 'high').length;
+                document.getElementById('securityIssues').textContent = securityIssues;
+
+                // Deployment Success: use a service metric if available, else fallback
+                const deployService = services.find(s => s.service_name.toLowerCase().includes('deploy'));
+                document.getElementById('deploymentSuccess').textContent = deployService ? (deployService.success_rate + '%') : 'N/A';
+
+                // Cost Savings: use a trend or recommendation metric if available
+                document.getElementById('costSavings').textContent = analytics.trends && analytics.trends.cost_savings ? ('$' + analytics.trends.cost_savings.toLocaleString()) : '$0';
+
+                // Update trend indicators (use trends or status)
+                updateTrendIndicators(analytics.trends && analytics.trends.direction ? analytics.trends.direction : 'stable');
+
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
+        }
+
+        function updateTrendIndicators(trend) {
+            const indicators = document.querySelectorAll('.trend-indicator');
+            indicators.forEach(indicator => {
+                indicator.className = `trend-indicator text-sm font-medium trend-${trend}`;
+            });
+        }
+
+        function refreshDashboard() {
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+            loadDashboardData();
+            loadCapabilities();
+        }
+
+        // ML / LLM Capabilities Logic
+        async function loadCapabilities() {
+            const flagsEl = document.getElementById('capabilitiesFlags');
+            const bodyEl = document.getElementById('capabilitiesBody');
+            const errEl = document.getElementById('capabilitiesError');
+            errEl.classList.add('hidden');
+            try {
+                const resp = await fetch('/ml-capabilities');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                const { minimal_mode, safe_mode, include_tensorflow_flag, tdigest_fallback, heavy_dependencies } = data;
+                flagsEl.innerHTML = `<strong>Flags:</strong> minimal_mode=<code>${minimal_mode}</code>, safe_mode=<code>${safe_mode}</code>, tensorflow_flag=<code>${include_tensorflow_flag || '0'}</code>, tdigest_fallback=<code>${tdigest_fallback}</code>`;
+                if (!heavy_dependencies || Object.keys(heavy_dependencies).length === 0) {
+                    bodyEl.innerHTML = '<tr><td colspan="2" class="py-2 px-3 text-gray-500">No heavy dependencies probed</td></tr>';
+                } else {
+                    bodyEl.innerHTML = Object.entries(heavy_dependencies)
+                        .sort()
+                        .map(([name, ok]) => `<tr class="border-b border-gray-100"><td class="py-2 px-3">${name}</td><td class="py-2 px-3">${ok ? '<span class=\'text-green-600 font-semibold\'>Yes</span>' : '<span class=\'text-red-600\'>No</span>'}</td></tr>`)
+                        .join('');
+                }
+            } catch (e) {
+                bodyEl.innerHTML = '';
+                flagsEl.textContent = 'Capabilities unavailable';
+                errEl.textContent = 'Failed to load /ml-capabilities: ' + e.message + ' (lean build or endpoint missing?)';
+                errEl.classList.remove('hidden');
+            }
+        }
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'refreshCapabilities') {
+                loadCapabilities();
+            }
+        });
+
+        // Conversation UI logic
+        function appendMessage(sender, text, isStream) {
+            const box = document.getElementById('conversationBox');
+            if (box.querySelector('.text-gray-400')) box.innerHTML = '';
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'mb-2';
+            msgDiv.innerHTML = `<span class="font-bold ${sender === 'You' ? 'text-blue-600' : 'text-green-600'}">${sender}:</span> <span>${text}</span>`;
+            box.appendChild(msgDiv);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        document.getElementById('conversationForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const input = document.getElementById('conversationInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            appendMessage('You', msg);
+            input.value = '';
+            // Simulate streaming reply
+            let reply = '';
+            const replyText = 'This is a placeholder for a streaming agent reply.';
+            appendMessage('Agent', '...', true);
+            setTimeout(() => {
+                const box = document.getElementById('conversationBox');
+                box.lastChild.innerHTML = `<span class="font-bold text-green-600">Agent:</span> <span>${replyText}</span>`;
+            }, 1200);
+        });
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function () {
+            initializeCharts();
+            refreshDashboard();
+
+            // Auto-refresh every 5 minutes
+            setInterval(refreshDashboard, 300000);
+        });
+    </script>
+</body>
+
+</html>

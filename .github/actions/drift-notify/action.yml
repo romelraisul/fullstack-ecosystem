@@ -1,0 +1,235 @@
+name: Drift / Digest Notification
+description: Unified notification with retry/backoff for digest drift events
+inputs:
+  provider:
+    description: Notification provider (slack|teams|discord|mattermost|email)
+    required: true
+  webhook:
+    description: Webhook URL for provider (ignored for email)
+    required: false
+  status:
+    description: Drift status (changed|unchanged|no_previous)
+    required: true
+  current:
+    description: Current digest
+    required: false
+  previous:
+    description: Previous digest
+    required: false
+  repository:
+    description: GitHub repository full name
+    required: true
+  run-url:
+    description: GitHub run URL
+    required: true
+  max-attempts:
+    description: Max retry attempts
+    required: false
+    default: "3"
+  initial-delay-ms:
+    description: Initial backoff delay (ms)
+    required: false
+    default: "1000"
+  factor:
+    description: Backoff factor multiplier
+    required: false
+    default: "2"
+  email-to:
+    description: Comma separated recipients if provider=email
+    required: false
+  email-from:
+    description: From address if provider=email
+    required: false
+  email-subject:
+    description: Subject if provider=email
+    required: false
+  effective-digest:
+    description: Effective digest (authoritative)
+    required: false
+  digest-match:
+    description: Digest match status (true|false|unknown)
+    required: false
+  signature-verified:
+    description: Signature verified status (true|false|skipped)
+    required: false
+  smtp-server:
+    description: SMTP server hostname (provider=email)
+    required: false
+  smtp-port:
+    description: SMTP server port (default 587)
+    required: false
+    default: "587"
+  smtp-username:
+    description: SMTP username (provider=email)
+    required: false
+  smtp-password:
+    description: SMTP password (provider=email)
+    required: false
+  smtp-secure:
+    description: Use TLS (true/false, default true)
+    required: false
+    default: "true"
+outputs:
+  posted:
+    description: true if a message was successfully posted
+    value: ${{ steps.post.outputs.posted }}
+  attempts:
+    description: Retry attempts used
+    value: ${{ steps.post.outputs.attempts }}
+  latency_ms:
+    description: Milliseconds until success (or total time on failure)
+    value: ${{ steps.post.outputs.latency_ms }}
+runs:
+  using: composite
+  steps:
+    - name: Post notification with retry
+      id: post
+      shell: bash
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        WEBHOOK: ${{ inputs.webhook }}
+        STATUS: ${{ inputs.status }}
+        CURRENT: ${{ inputs.current }}
+        PREVIOUS: ${{ inputs.previous }}
+  EFF_DIGEST: ${{ inputs.effective-digest }}
+  DIGEST_MATCH: ${{ inputs.digest-match }}
+  SIG_VER: ${{ inputs.signature-verified }}
+        REPO: ${{ inputs.repository }}
+        RUN_URL: ${{ inputs['run-url'] }}
+        MAX_ATTEMPTS: ${{ inputs['max-attempts'] }}
+        INIT_DELAY: ${{ inputs['initial-delay-ms'] }}
+        FACTOR: ${{ inputs.factor }}
+        EMAIL_TO: ${{ inputs.email-to }}
+        EMAIL_FROM: ${{ inputs.email-from }}
+        EMAIL_SUBJECT: ${{ inputs.email-subject }}
+        SMTP_SERVER: ${{ inputs.smtp-server }}
+        SMTP_PORT: ${{ inputs.smtp-port }}
+        SMTP_USERNAME: ${{ inputs.smtp-username }}
+        SMTP_PASSWORD: ${{ inputs.smtp-password }}
+        SMTP_SECURE: ${{ inputs.smtp-secure }}
+      run: |
+        set -e
+        attempts=0
+        delay=$INIT_DELAY
+        success=false
+        start_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+        make_payload() {
+          # Build emoji indicators
+          case "$DIGEST_MATCH" in
+            true) MATCH_EMOJI="✅" ;;
+            false) MATCH_EMOJI="❌" ;;
+            *) MATCH_EMOJI="➖" ;;
+          esac
+          case "$SIG_VER" in
+            true) SIG_EMOJI="🔒" ;;
+            false) SIG_EMOJI="🔓" ;;
+            *) SIG_EMOJI="⏭️" ;;
+          esac
+          SUM_LINE="match=$DIGEST_MATCH $MATCH_EMOJI sig=$SIG_VER $SIG_EMOJI"
+          EFF_LINE="effective=${EFF_DIGEST:-n/a}"
+          case "$PROVIDER" in
+            teams)
+              printf '{"@type":"MessageCard","@context":"http://schema.org/extensions","summary":"Digest Drift","themeColor":"0076D7","title":"Container Digest Drift","sections":[{"facts":[{"name":"Repository","value":"%s"},{"name":"Status","value":"%s"},{"name":"Previous","value":"%s"},{"name":"Current","value":"%s"},{"name":"Effective","value":"%s"},{"name":"Integrity","value":"%s"}],"markdown":true}],"potentialAction":[{"@type":"OpenUri","name":"Workflow Run","targets":[{"os":"default","uri":"%s"}]}]}' "$REPO" "$STATUS" "$PREVIOUS" "$CURRENT" "$EFF_DIGEST" "$SUM_LINE" "$RUN_URL"
+              ;;
+            discord)
+              printf '{"content":"[Digest Drift] repo=%s status=%s previous=%s current=%s %s %s :: %s"}' "$REPO" "$STATUS" "$PREVIOUS" "$CURRENT" "$EFF_LINE" "$SUM_LINE" "$RUN_URL"
+              ;;
+            mattermost)
+              printf '{"text":"[Digest Drift] repo=%s status=%s previous=%s current=%s %s %s :: %s"}' "$REPO" "$STATUS" "$PREVIOUS" "$CURRENT" "$EFF_LINE" "$SUM_LINE" "$RUN_URL"
+              ;;
+            email)
+              subj=${EMAIL_SUBJECT:-Digest Drift Detected}
+              body="Digest drift $STATUS for $REPO previous=$PREVIOUS current=$CURRENT $EFF_LINE $SUM_LINE :: $RUN_URL"
+              printf '%s\n%s' "$subj" "$body"
+              ;;
+            slack|*)
+              printf '{"text":"[Digest Drift] repo=%s status=%s previous=%s current=%s %s %s :: %s"}' "$REPO" "$STATUS" "$PREVIOUS" "$CURRENT" "$EFF_LINE" "$SUM_LINE" "$RUN_URL"
+              ;;
+          esac
+        }
+        while [ $attempts -lt $MAX_ATTEMPTS ]; do
+          attempts=$((attempts+1))
+          echo "Attempt $attempts posting notification to $PROVIDER" >&2
+          if [ "$PROVIDER" = email ]; then
+            payload=$(make_payload)
+            subject=$(printf '%s' "$payload" | head -n1)
+            body=$(printf '%s' "$payload" | tail -n +2)
+            # Prefer explicit SMTP credentials when provided
+            if [ -n "$SMTP_SERVER" ] && [ -n "$SMTP_USERNAME" ] && [ -n "$SMTP_PASSWORD" ]; then
+              # Try swaks first
+              if ! command -v swaks >/dev/null 2>&1; then
+                if command -v apt-get >/dev/null 2>&1; then sudo apt-get update -y >/dev/null 2>&1 && sudo apt-get install -y swaks >/dev/null 2>&1 || true; fi
+              fi
+              if command -v swaks >/dev/null 2>&1; then
+                tlsflag="--tls"
+                [ "$SMTP_SECURE" != "true" ] && tlsflag=""
+                if swaks --server "$SMTP_SERVER" --port "${SMTP_PORT:-587}" $tlsflag --auth LOGIN --auth-user "$SMTP_USERNAME" --auth-password "$SMTP_PASSWORD" --from "${EMAIL_FROM:-actions@github.com}" --to "$EMAIL_TO" --header "Subject: $subject" --body "$body" >/dev/null 2>&1; then
+                  http_code=200
+                else
+                  http_code=500
+                fi
+              else
+                # Python fallback using smtplib
+                python - <<'PYEOF' || exit 0
+import os, ssl, smtplib, sys
+server=os.environ.get('SMTP_SERVER'); port=int(os.environ.get('SMTP_PORT','587'))
+user=os.environ.get('SMTP_USERNAME'); pw=os.environ.get('SMTP_PASSWORD')
+to=os.environ.get('EMAIL_TO',''); from_addr=os.environ.get('EMAIL_FROM','actions@github.com')
+subj=os.environ.get('EMAIL_SUBJECT','Digest Drift Detected')
+body='''%s''' % ("""${body}""")
+if not (server and user and pw and to):
+    print('Missing SMTP parameters for Python fallback', file=sys.stderr); sys.exit(1)
+msg=f"Subject: {subj}\nFrom: {from_addr}\nTo: {to}\nContent-Type: text/plain; charset=UTF-8\n\n{body}\n"
+secure=os.environ.get('SMTP_SECURE','true').lower()=='true'
+try:
+    if secure:
+        context=ssl.create_default_context()
+        with smtplib.SMTP(server, port, timeout=30) as s:
+            s.starttls(context=context)
+            s.login(user, pw)
+            s.sendmail(from_addr, to.split(','), msg)
+    else:
+        with smtplib.SMTP(server, port, timeout=30) as s:
+            s.login(user, pw)
+            s.sendmail(from_addr, to.split(','), msg)
+    sys.exit(0)
+except Exception as e:
+    print('Python SMTP send failed:', e, file=sys.stderr)
+    sys.exit(2)
+PYEOF
+                code=$?
+                if [ $code -eq 0 ]; then http_code=200; else http_code=500; fi
+              fi
+            elif command -v sendmail >/dev/null 2>&1; then
+              printf 'Subject: %s\nFrom: %s\nTo: %s\nContent-Type: text/plain; charset=UTF-8\n\n%s\n' "$subject" "${EMAIL_FROM:-actions@github.com}" "$EMAIL_TO" "$body" | sendmail -t && http_code=200 || http_code=500
+            else
+              echo "No SMTP mechanism available (need SMTP_* vars, sendmail, or swaks)" >&2
+              http_code=501
+            fi
+          else
+            payload=$(make_payload)
+            http_code=$(curl -s -o resp.out -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK" || echo "000")
+          fi
+          if echo "$http_code" | grep -E '^(2..)$' >/dev/null; then
+            echo "Posted successfully (HTTP $http_code)" >&2
+            success=true; break
+          fi
+          if echo "$http_code" | grep -E '^(429|5..|000)$' >/dev/null; then
+            echo "Transient failure (HTTP $http_code), backing off $delay ms" >&2
+            sleep $(awk -v ms=$delay 'BEGIN{print ms/1000}')
+            delay=$((delay*FACTOR))
+          else
+            echo "Non-retryable HTTP $http_code, aborting retries" >&2
+            break
+          fi
+        done
+        end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+        latency=$((end_ms-start_ms))
+        echo "attempts=$attempts" >> $GITHUB_OUTPUT
+        echo "latency_ms=$latency" >> $GITHUB_OUTPUT
+        if [ "$success" = true ]; then
+          echo "posted=true" >> $GITHUB_OUTPUT
+        else
+          echo "posted=false" >> $GITHUB_OUTPUT
+          echo "Notification failed after $attempts attempts (non-blocking)" >&2
+        fi

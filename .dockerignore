@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+venv/
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+
+# Unit test / coverage reports
+.coverage
+htmlcov/
+.pytest_cache/
+.cache/
+.mypy_cache/
+
+# VS Code and other IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Local data & databases (keep seeds or migrations if needed)
+*.sqlite
+*.db
+data/
+!data/README.md
+
+# Docker
+Dockerfile.*
+
+# Build artifacts
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Node / frontend (if present)
+node_modules/
+
+# Misc
+*.bak
+*.swp
+*.tmp

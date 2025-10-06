@@ -1,0 +1,108 @@
+{
+    "nodes": [
+        {
+            "id": "qcae",
+            "category": "quantum"
+        },
+        {
+            "id": "qcc",
+            "category": "quantum"
+        },
+        {
+            "id": "qcms",
+            "category": "quantum"
+        },
+        {
+            "id": "qdc",
+            "category": "quantum"
+        },
+        {
+            "id": "qindex",
+            "category": "quantum"
+        },
+        {
+            "id": "capacity-planner",
+            "category": "infrastructure"
+        },
+        {
+            "id": "autoscaler",
+            "category": "infrastructure"
+        },
+        {
+            "id": "market-domination-acceleration-framework",
+            "category": "strategy"
+        },
+        {
+            "id": "launch-revenue-systems",
+            "category": "finance"
+        },
+        {
+            "id": "api-monetization",
+            "category": "finance"
+        },
+        {
+            "id": "agi-research-lab",
+            "category": "ai"
+        },
+        {
+            "id": "advanced-evolution-protocols",
+            "category": "ai"
+        },
+        {
+            "id": "compliance-hub",
+            "category": "compliance"
+        }
+    ],
+    "edges": [
+        {
+            "from": "qcc",
+            "to": "qcae",
+            "type": "controls"
+        },
+        {
+            "from": "qcms",
+            "to": "qcc",
+            "type": "manages"
+        },
+        {
+            "from": "qdc",
+            "to": "qcae",
+            "type": "stores"
+        },
+        {
+            "from": "qindex",
+            "to": "qdc",
+            "type": "indexes"
+        },
+        {
+            "from": "capacity-planner",
+            "to": "autoscaler",
+            "type": "feeds"
+        },
+        {
+            "from": "market-domination-acceleration-framework",
+            "to": "launch-revenue-systems",
+            "type": "drives"
+        },
+        {
+            "from": "launch-revenue-systems",
+            "to": "api-monetization",
+            "type": "activates"
+        },
+        {
+            "from": "agi-research-lab",
+            "to": "advanced-evolution-protocols",
+            "type": "experiments"
+        },
+        {
+            "from": "advanced-evolution-protocols",
+            "to": "agi-research-lab",
+            "type": "refines"
+        },
+        {
+            "from": "api-monetization",
+            "to": "compliance-hub",
+            "type": "enforces"
+        }
+    ]
+}

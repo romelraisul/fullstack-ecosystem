@@ -1,0 +1,154 @@
+name: Security Build & Scan
+
+on:
+    workflow_call:
+        inputs:
+            image-ref:
+                required: false
+                type: string
+            push-sbom:
+                required: false
+                type: boolean
+                default: false
+        outputs:
+            critical:
+                description: Critical vulnerability count
+                value: ${{ jobs.scan.outputs.critical }}
+            high:
+                description: High vulnerability count
+                value: ${{ jobs.scan.outputs.high }}
+            medium:
+                description: Medium vulnerability count
+                value: ${{ jobs.scan.outputs.medium }}
+            sbom_components:
+                description: SBOM component count
+                value: ${{ jobs.scan.outputs.sbom_components }}
+            license_count:
+                description: License count observed
+                value: ${{ jobs.scan.outputs.license_count }}
+            sbom_digest:
+                description: SHA256 digest of CycloneDX SBOM
+                value: ${{ jobs.scan.outputs.sbom_digest }}
+
+jobs:
+    scan:
+        runs-on: ubuntu-latest
+        outputs:
+            critical: ${{ steps.sev.outputs.critical }}
+            high: ${{ steps.sev.outputs.high }}
+            medium: ${{ steps.sev.outputs.medium }}
+            sbom_components: ${{ steps.sbom.outputs.sbom_components }}
+            license_count: ${{ steps.sbom.outputs.license_count }}
+            sbom_digest: ${{ steps.sbom.outputs.sbom_digest }}
+        steps:
+            - name: Compatibility notice
+              run: |
+                  echo "Hyphenated output alias 'sbom-digest' has been removed. Use 'sbom_digest'." >&2
+            - name: Capture phase start
+              id: phase_start
+              run: echo "start_ts=$(date -u +%s)" >> $GITHUB_OUTPUT
+
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Cache Trivy DB
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/trivy
+                  key: trivy-db-${{ runner.os }}
+                  restore-keys: |
+                      trivy-db-${{ runner.os }}-
+
+            - name: Cache Grype DB
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/grype/db
+                  key: grype-db-${{ runner.os }}
+                  restore-keys: |
+                      grype-db-${{ runner.os }}-
+
+            - name: Build image
+              run: docker build -f Dockerfile -t local-scan:latest .
+
+            - name: Trivy (SARIF)
+              uses: aquasecurity/trivy-action@0.20.0
+              with:
+                  image-ref: local-scan:latest
+                  format: sarif
+                  output: trivy.sarif
+                  ignore-unfixed: true
+                  severity: CRITICAL,HIGH,MEDIUM
+
+            - name: Install Syft (cached binary layer)
+              run: |
+                  if ! command -v syft >/dev/null 2>&1; then
+                    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v1.17.0
+                  fi
+
+            - name: Install Grype (cached db via cache step)
+              run: |
+                  if ! command -v grype >/dev/null 2>&1; then
+                    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin v0.74.5
+                  fi
+
+            - name: Generate SBOM
+              id: sbom
+              run: |
+                  syft local-scan:latest -o cyclonedx-json > sbom.cdx.json || true
+                  syft local-scan:latest -o spdx-json > sbom.spdx.json || true
+                  comps=$(jq '.components | length' sbom.cdx.json 2>/dev/null || echo 0)
+                  echo "sbom_components=$comps" >> $GITHUB_OUTPUT
+                  jq -r '[.components[]? | .licenses[]?.license.name?] | unique | .[]' sbom.cdx.json 2>/dev/null || true > LICENSES.txt
+                  lic_count=$(wc -l < LICENSES.txt 2>/dev/null || echo 0)
+                  echo "license_count=$lic_count" >> $GITHUB_OUTPUT
+                  if command -v sha256sum >/dev/null 2>&1; then
+                    sha=$(sha256sum sbom.cdx.json | awk '{print $1}')
+                  else
+                    sha=$(shasum -a 256 sbom.cdx.json | awk '{print $1}')
+                  fi
+                  echo "sbom_digest=$sha" >> $GITHUB_OUTPUT
+
+            - name: Grype (SARIF)
+              run: |
+                  grype local-scan:latest -o sarif > grype.sarif || true
+
+            - name: Compute severity counts
+              id: sev
+              run: |
+                  crit=0; high=0; med=0
+                  for f in trivy.sarif grype.sarif; do
+                    [ -f "$f" ] || continue
+                    c=$(jq '[.runs[].results[]? | (.properties["security-severity"] // "" | tonumber?) | select(.>=9)] | length' "$f" 2>/dev/null || echo 0)
+                    h=$(jq '[.runs[].results[]? | (.properties["security-severity"] // "" | tonumber?) | select(.>=7 and .<9)] | length' "$f" 2>/dev/null || echo 0)
+                    m=$(jq '[.runs[].results[]? | (.properties["security-severity"] // "" | tonumber?) | select(.>=4 and .<7)] | length' "$f" 2>/dev/null || echo 0)
+                    crit=$((crit+c)); high=$((high+h)); med=$((med+m))
+                  done
+                  echo "critical=$crit" >> $GITHUB_OUTPUT
+                  echo "high=$high" >> $GITHUB_OUTPUT
+                  echo "medium=$med" >> $GITHUB_OUTPUT
+
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sbom-provenance
+                  path: |
+                      sbom.cdx.json
+                      sbom.spdx.json
+                      LICENSES.txt
+                      trivy.sarif
+                      grype.sarif
+
+            - name: Emit phase metrics
+              if: always()
+              run: |
+                  START=${{ steps.phase_start.outputs.start_ts || '0' }}
+                  END=$(date -u +%s)
+                  DURATION=$((END-START))
+                  jq -n --arg start "$START" --arg end "$END" --arg dur "$DURATION" '{phase:"build-scan",start:($start|tonumber),end:($end|tonumber),duration_sec:($dur|tonumber)}' > metrics-build-scan.json
+
+            - name: Upload phase metrics
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-build-scan
+                  path: metrics-build-scan.json

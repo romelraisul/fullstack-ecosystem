@@ -1,0 +1,44 @@
+name: mypy-fast
+
+on:
+    pull_request:
+        paths:
+            - "unified_master_dashboard.py"
+            - "config.py"
+            - "dashboard/**"
+            - "mypy.ini"
+            - ".github/workflows/mypy-fast.yml"
+    push:
+        branches: [main, master]
+        paths:
+            - "unified_master_dashboard.py"
+            - "config.py"
+            - "dashboard/**"
+            - "mypy.ini"
+
+jobs:
+    type-check:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install mypy (dev deps)
+              run: |
+                  pip install --upgrade pip
+                  if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install mypy; fi
+
+            - name: Run strict mypy
+              run: |
+                  mypy --version
+                  mypy --strict unified_master_dashboard.py config.py dashboard/__init__.py
+
+            - name: Summary
+              if: always()
+              run: echo "mypy-fast workflow completed"

@@ -1,0 +1,141 @@
+name: Security Notify
+
+on:
+    workflow_call:
+        inputs:
+            provider:
+                type: string
+                required: true
+            webhook:
+                type: string
+                required: false
+            email_to:
+                type: string
+                required: false
+            email_from:
+                type: string
+                required: false
+            email_subject:
+                type: string
+                required: false
+            effective_digest:
+                type: string
+                required: false
+                description: Effective digest to display in notification when drift detected
+            digest_match:
+                type: string
+                required: false
+                description: Digest match status from verify phase
+            signature_verified:
+                type: string
+                required: false
+                description: Signature verified status from verify phase
+        outputs:
+            posted:
+                description: Notification posted
+                value: ${{ jobs.notify.outputs.posted }}
+            attempts:
+                description: Retry attempts used
+                value: ${{ jobs.notify.outputs.attempts }}
+            latency_ms:
+                description: Milliseconds until success/final failure
+                value: ${{ jobs.notify.outputs.latency_ms }}
+
+jobs:
+    notify:
+        runs-on: ubuntu-latest
+        outputs:
+            posted: ${{ steps.metrics.outputs.posted }}
+            attempts: ${{ steps.metrics.outputs.attempts }}
+            latency_ms: ${{ steps.metrics.outputs.latency_ms }}
+        steps:
+            - name: Compatibility notice
+                run: |
+                    echo "Hyphenated input names removed; underscore-only inputs accepted here. Composite action still expects hyphenated keys (shim)." >&2
+
+            - name: Download digest drift artifact (best effort)
+                uses: actions/download-artifact@v4
+                with:
+                    name: effective-image-digest-drift
+                    path: drift
+                continue-on-error: true
+
+            - name: Parse drift artifact
+                id: drift
+                shell: bash
+                run: |
+                    if [ -f drift/digest-drift.json ]; then
+                        status=$(jq -r '.status' drift/digest-drift.json)
+                        current=$(jq -r '.current' drift/digest-drift.json)
+                        previous=$(jq -r '.previous' drift/digest-drift.json)
+                        echo "status=$status" >> $GITHUB_OUTPUT
+                        echo "current=$current" >> $GITHUB_OUTPUT
+                        echo "previous=$previous" >> $GITHUB_OUTPUT
+                    else
+                        echo "No drift artifact found (notification may still proceed if inputs provided)." >&2
+                    fi
+
+            - name: Normalize inputs
+                id: norm
+                shell: bash
+                run: |
+                    ed='${{ inputs.effective_digest }}'
+                    dm='${{ inputs.digest_match }}'
+                    sv='${{ inputs.signature_verified }}'
+                    echo "effective=$ed" >> $GITHUB_OUTPUT
+                    echo "match=$dm" >> $GITHUB_OUTPUT
+                    echo "sig=$sv" >> $GITHUB_OUTPUT
+
+            - name: Send notification
+                id: send
+                if: ${{ steps.drift.outputs.status != '' }}
+                uses: ./.github/actions/drift-notify
+                with:
+                    provider: ${{ inputs.provider }}
+                    webhook: ${{ inputs.webhook }}
+                    status: ${{ steps.drift.outputs.status }}
+                    current: ${{ steps.drift.outputs.current }}
+                    previous: ${{ steps.drift.outputs.previous }}
+                    effective-digest: ${{ steps.norm.outputs.effective }}
+                    digest-match: ${{ steps.norm.outputs.match }}
+                    signature-verified: ${{ steps.norm.outputs.sig }}
+                    repository: ${{ github.repository }}
+                    run-url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                    email-to: ${{ inputs.email_to }}
+                    email-from: ${{ inputs.email_from }}
+                    email-subject: ${{ inputs.email_subject }}
+
+            - name: Metrics
+                id: metrics
+                shell: bash
+                run: |
+                    STATUS='${{ steps.drift.outputs.status }}'
+                    CURRENT='${{ steps.drift.outputs.current }}'
+                    PREVIOUS='${{ steps.drift.outputs.previous }}'
+                    ED='${{ steps.norm.outputs.effective }}'
+                    DM='${{ steps.norm.outputs.match }}'
+                    SV='${{ steps.norm.outputs.sig }}'
+                    POSTED='${{ steps.send.outputs.posted }}'
+                    ATTEMPTS='${{ steps.send.outputs.attempts }}'
+                    LAT_MS='${{ steps.send.outputs.latency_ms }}'
+                    jq -n \
+                        --arg status "$STATUS" \
+                        --arg current "$CURRENT" \
+                        --arg previous "$PREVIOUS" \
+                        --arg effective "$ED" \
+                        --arg digest_match "$DM" \
+                        --arg signature_verified "$SV" \
+                        --arg posted "${POSTED:-false}" \
+                        --arg attempts "${ATTEMPTS:-0}" \
+                        --arg latency_ms "${LAT_MS:-0}" \
+                        '{phase:"notify",status:$status,current:$current,previous:$previous,effective_digest:$effective,digest_match:$digest_match,signature_verified:$signature_verified,posted:($posted == "true"),attempts:($attempts|tonumber),latency_ms:($latency_ms|tonumber)}' > metrics-notify.json
+                    echo "posted=${POSTED}" >> $GITHUB_OUTPUT
+                    echo "attempts=${ATTEMPTS:-0}" >> $GITHUB_OUTPUT
+                    echo "latency_ms=${LAT_MS:-0}" >> $GITHUB_OUTPUT
+
+            - name: Upload metrics artifact
+                if: always()
+                uses: actions/upload-artifact@v4
+                with:
+                    name: metrics-notify
+                    path: metrics-notify.json

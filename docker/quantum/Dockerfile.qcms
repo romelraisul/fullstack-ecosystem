@@ -1,0 +1,8 @@
+# Quantum Consciousness Merger System Dockerfile
+FROM python:3.11-slim-bookworm
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt && pip install --no-cache-dir prometheus-client fastapi uvicorn
+COPY quantum_consciousness_merger_system.py /app/quantum_consciousness_merger_system.py
+EXPOSE 5081
+CMD ["uvicorn", "quantum_consciousness_merger_system:app", "--host", "0.0.0.0", "--port", "5081"]

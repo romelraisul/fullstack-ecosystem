@@ -1,0 +1,221 @@
+version: "3.9"
+
+# Lightweight compose to run new platform/domain services + orchestration & monitoring
+# Includes optional Traefik reverse proxy (labels) and Prometheus-aware /metrics endpoints.
+
+services:
+  blockchain-platform:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=blockchain
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      # Use local file path within the same directory to ensure Windows path resolution
+      - ./blockchain_crypto_platform.py:/app/blockchain_crypto_platform.py:ro
+    command:
+      [
+        "uvicorn",
+        "blockchain_crypto_platform:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5205",
+      ]
+    ports:
+      - "5205:5205"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.blockchain.rule=Host(`localhost`) && PathPrefix(`/blockchain`)"
+      - "traefik.http.routers.blockchain.entrypoints=web,websecure"
+      - "traefik.http.routers.blockchain.tls=true"
+      - "traefik.http.services.blockchain.loadbalancer.server.port=5205"
+      - "traefik.http.routers.blockchain.middlewares=security-headers,rate-limit"
+    networks: [platforms]
+
+  iot-platform:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=iot
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      - ../iot_management_platform.py:/app/iot_management_platform.py:ro
+    command:
+      [
+        "uvicorn",
+        "iot_management_platform:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5206",
+      ]
+    ports: ["5206:5206"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.iot.rule=PathPrefix(`/iot`)"
+
+  cybersecurity-platform:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=cybersecurity
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      - ../cybersecurity_operations_center.py:/app/cybersecurity_operations_center.py:ro
+    command:
+      [
+        "uvicorn",
+        "cybersecurity_operations_center:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5207",
+      ]
+    ports: ["5207:5207"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cybersecurity.rule=PathPrefix(`/cyber`)"
+      - "traefik.http.services.cybersecurity.loadbalancer.server.port=5207"
+      - "traefik.http.routers.cybersecurity.middlewares=security-headers,rate-limit"
+    networks: [platforms]
+
+  mlops-platform:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=mlops
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      - ../mlops_platform.py:/app/mlops_platform.py:ro
+    command:
+      ["uvicorn", "mlops_platform:app", "--host", "0.0.0.0", "--port", "5208"]
+    ports: ["5208:5208"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mlops.rule=PathPrefix(`/mlops`)"
+      - "traefik.http.services.mlops.loadbalancer.server.port=5208"
+      - "traefik.http.routers.mlops.middlewares=security-headers,rate-limit"
+    networks: [platforms]
+
+  orchestration-hub:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=orchestration
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      - ../orchestration_hub.py:/app/orchestration_hub.py:ro
+    command:
+      [
+        "uvicorn",
+        "orchestration_hub:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5210",
+      ]
+    ports: ["5210:5210"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.orchestration.rule=PathPrefix(`/orchestrator`)"
+      - "traefik.http.services.orchestration.loadbalancer.server.port=5210"
+      - "traefik.http.routers.orchestration.middlewares=security-headers,rate-limit"
+    networks: [platforms]
+
+  monitoring-dashboard:
+    build:
+      context: .
+      dockerfile: docker/platforms/Dockerfile.platform
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=monitoring
+      - PLATFORM_API_KEY=${PLATFORM_API_KEY:-changeme}
+    volumes:
+      - ../monitoring_dashboard.py:/app/monitoring_dashboard.py:ro
+    command:
+      [
+        "uvicorn",
+        "monitoring_dashboard:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5211",
+      ]
+    ports: ["5211:5211"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.monitoring.rule=PathPrefix(`/monitor`)"
+      - "traefik.http.services.monitoring.loadbalancer.server.port=5211"
+      - "traefik.http.routers.monitoring.middlewares=security-headers,rate-limit"
+    networks: [platforms]
+
+  traefik:
+    image: traefik:3.0
+    env_file:
+      - .env
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=web"
+      - "--log.level=INFO"
+      - "--global.sendAnonymousUsage=false"
+    ports:
+      - "5080:80"
+      - "5443:443" # exposed TLS
+      - "5081:8080" # dashboard
+      - "9090:9100" # Traefik prometheus (internal mapping)
+      - "8444:443" # extra test mapping for integration tests expecting 8444
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/certs:ro # place self-signed or real certs here (fullchain.pem, privkey.pem)
+      - traefik-acme:/letsencrypt
+    networks: [platforms]
+
+    labels:
+      # Define a security headers middleware
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.X-Content-Type-Options=nosniff"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.X-Frame-Options=SAMEORIGIN"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.Referrer-Policy=no-referrer"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.Strict-Transport-Security=max-age=63072000; includeSubDomains; preload"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.X-XSS-Protection=1; mode=block"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.X-Download-Options=noopen"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.Permissions-Policy=geolocation=(), microphone=(), camera=()"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.Cache-Control=no-store"
+      - "traefik.http.middlewares.security-headers.headers.customresponseheaders.Content-Security-Policy=default-src 'self'"
+
+      # Rate limit middleware (average requests per second + burst)
+      - "traefik.http.middlewares.rate-limit.ratelimit.average=5"
+      - "traefik.http.middlewares.rate-limit.ratelimit.burst=10"
+      - "traefik.http.middlewares.rate-limit.ratelimit.period=1s"
+      # Optionally define an IP whitelist (example placeholder - adjust CIDRs)
+      - "traefik.http.middlewares.internal-only.ipwhitelist.sourcerange=127.0.0.1/32,172.16.0.0/12,192.168.0.0/16"
+    # (HTTPS blockchain router defined via service labels above)
+
+  # Redirect HTTP->HTTPS (optional) can be re-added later once base routing validated.
+
+volumes:
+  traefik-acme:
+
+networks:
+  platforms:
+    driver: bridge

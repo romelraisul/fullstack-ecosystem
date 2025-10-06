@@ -1,0 +1,421 @@
+name: Reusable Prometheus Recording Rules Live Test
+
+on:
+  workflow_call:
+    inputs:
+      python_versions:
+        description: "Comma-separated Python versions for matrix"
+        required: false
+        default: "3.10,3.11,3.12"
+        type: string
+      python_versions_json:
+        description: "Explicit JSON array of Python versions (overrides python_versions if set)"
+        required: false
+        default: ""
+        type: string
+      rules_path:
+        description: "Path to Prometheus recording rules file"
+        required: false
+        default: "docker/prometheus_rules.yml"
+        type: string
+      compose_file:
+        description: "Docker Compose file path"
+        required: false
+        default: "docker-compose.yml"
+        type: string
+      baseline_file:
+        description: "Baseline Grafana panel JSON file"
+        required: false
+        default: "grafana_baseline_panels.json"
+        type: string
+      min_panels:
+        description: "Minimum total panel count assertion"
+        required: false
+        default: "5"
+        type: string
+      retention_days:
+        description: "Artifact retention days for diagnostics"
+        required: false
+        default: "7"
+        type: string
+      scrape_interval:
+        description: "Prometheus scrape interval (e.g. 3s)"
+        required: false
+        default: "3s"
+        type: string
+      evaluation_interval:
+        description: "Prometheus evaluation interval (e.g. 3s)"
+        required: false
+        default: "3s"
+        type: string
+      taxonomy_file:
+        description: "Alert taxonomy JSON file"
+        required: false
+        default: "alerts_taxonomy.json"
+        type: string
+      required_labels:
+        description: "Required alert labels (comma-separated)"
+        required: false
+        default: "severity"
+        type: string
+      layout_pos_tolerance:
+        description: "Layout position tolerance (grid units)"
+        required: false
+        default: "0"
+        type: string
+      layout_size_change_threshold:
+        description: "Layout size change percentage threshold"
+        required: false
+        default: "0"
+        type: string
+      skip_live_tests:
+        description: "If true, skip live Prometheus/Grafana stack"
+        required: false
+        default: "false"
+        type: string
+      use_unified_wrapper:
+        description: "If true, run unified wrapper during scripts tests"
+        required: false
+        default: "true"
+        type: string
+
+jobs:
+  scripts-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        # Matrix expansion: prefer explicit JSON array (python_versions_json). If empty, fallback to a default list.
+        # NOTE: For multiple versions, callers MUST set inputs.python_versions_json (e.g. ['"3.10"','"3.11"']).
+        python-version: ${{ fromJson( inputs.python_versions_json != '' && inputs.python_versions_json || '["3.11"]' ) }}
+    steps:
+      # Matrix expands directly via fromJson on inputs
+      - uses: actions/checkout@v4
+      - name: Export PYTHONPATH
+        run: echo "PYTHONPATH=$PWD/fullstack-ecosystem" >> $GITHUB_ENV
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies (minimal)
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          pip install pytest pyyaml
+      - name: Verify pythonpath setup
+        run: |
+          python -c "import sys; import sitecustomize; from tests.utils.metrics import assert_metric_present; print('sitecustomize & metrics helpers OK; sys.path[0]=', sys.path[0])"
+      - name: Run fast script tests
+        run: pytest -q tests/scripts || exit 1
+      - name: Run mypy (selective helpers)
+        run: |
+          pip install mypy || true
+          make mypy || mypy tests/utils/*.py
+      - name: Run quantile benchmark
+        run: |
+          mkdir -p bench
+          BENCH_OUT=bench/quantiles_benchmark.json make benchmark-quantiles
+          echo 'Benchmark file contents:'
+          head -n 40 bench/quantiles_benchmark.json || true
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantile-benchmark-${{ matrix.python-version }}
+          path: bench/quantiles_benchmark.json
+          retention-days: 5
+      - name: Soft check quantile cache speedup
+        run: |
+          echo 'Evaluating benchmark speedup (soft gate)...'
+          if [ -f bench/quantiles_benchmark.json ]; then
+            BATCH=$(jq -r '.relative_speedup_vs_disabled.batch_speedup // 0' bench/quantiles_benchmark.json)
+            IND=$(jq -r '.relative_speedup_vs_disabled.individual_speedup // 0' bench/quantiles_benchmark.json)
+            echo "Reported batch speedup: $BATCH"
+            echo "Reported individual speedup: $IND"
+            awk -v b="$BATCH" 'BEGIN { if (b+0 < 1.05) printf("WARNING: batch_speedup below target (1.05x): %.2fx\n", b+0); }'
+          else
+            echo 'Benchmark JSON missing; skipping soft check.'
+          fi || true
+      - name: Run unified wrapper (optional)
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        run: |
+          set -e
+          echo "Generating synthetic inputs for unified wrapper"
+          python -c "import json;print(json.dumps([{'title':f'Panel {i}','gridPos':{'x':i*2,'y':0,'w':2,'h':2}} for i in range(5)]))" > baseline.json
+          cp baseline.json current.json
+          printf '%s\n' 'groups:' '- name: example' '  rules:' '  - alert: SampleAlert' '    expr: vector(1)' '    labels:' '      severity: critical' > rules.yml
+          echo '{"alerts":[{"alert":"SampleAlert","severity":"critical","runbook":"r"}]}' > taxonomy.json
+          python scripts/run_observability_validations.py \
+            --layout-baseline baseline.json \
+            --layout-current-glob 'current.json' \
+            --alerts-rules rules.yml \
+            --alerts-taxonomy taxonomy.json \
+            --layout-report layout_report.json \
+            --alerts-report alerts_report.json \
+            --out-metrics combined_metrics.prom \
+            --out-index validations_index.json || true
+          ls -1 *.prom *.json || true
+      - name: Show combined metrics (debug)
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        run: |
+          echo '--- combined_metrics.prom (top) ---'
+          head -n 200 combined_metrics.prom || true
+      - name: Upload wrapper artifacts
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrapper-artifacts
+          path: |
+            combined_metrics.prom
+            validations_index.json
+            layout_report.json
+            alerts_report.json
+          retention-days: 5
+      - name: Gate on wrapper metrics (panel count/non-zero checks)
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        run: |
+          echo 'Evaluating combined_metrics.prom for basic health gates'
+          set -e
+          if ! grep -q 'layout_total_panels' combined_metrics.prom; then echo 'Missing layout_total_panels metric' >&2; exit 1; fi
+          PANELS=$(grep 'layout_total_panels' combined_metrics.prom | awk '{print $2}' | head -n1)
+          if [ -z "$PANELS" ] || [ "$PANELS" -lt 1 ]; then echo 'Panel metric not positive' >&2; exit 1; fi
+          echo "Panels metric: $PANELS"
+          # If alert_validation_errors appears ensure it is zero (synthetic should have none)
+          if grep -q '^alert_validation_errors' combined_metrics.prom; then
+            ERR=$(grep '^alert_validation_errors' combined_metrics.prom | awk '{print $2}' | head -n1)
+            if [ "$ERR" != "0" ]; then echo "Unexpected alert validation errors: $ERR" >&2; exit 1; fi
+          fi
+      - name: Validate metrics cardinality
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        env:
+          CARD_MAX_NAMES: 120
+          CARD_MAX_SAMPLES_PER: 50
+          CARD_MAX_TOTAL: 800
+          CARD_ALLOW_PREFIXES: "layout_,alert_"
+        run: |
+          python scripts/validate_metrics_cardinality.py --metrics combined_metrics.prom --json-report cardinality_report.json
+          echo 'Cardinality report:'
+          cat cardinality_report.json || true
+      - name: Upload cardinality report
+        if: ${{ inputs.use_unified_wrapper == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-cardinality-report
+          path: cardinality_report.json
+          retention-days: 5
+      - run: echo "Script-level fast tests passed."
+
+  build-api-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      docs_only: ${{ steps.changed.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect docs-only changes
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+              - '!${{ inputs.rules_path }}'
+              - '!tests/integration/test_prometheus_recording_rules_live.py'
+              - '!.github/workflows/prometheus-live-test.yml'
+              - '!.github/workflows/prometheus-live-test-reusable.yml'
+      - name: Skip build if docs-only
+        if: steps.changed.outputs.docs == 'true'
+        run: |
+          echo "Docs-only change detected; skipping image build."; exit 0
+      - name: Build API image
+        run: docker build -t ecosystem_api_local:latest backend
+      - name: Save image artifact
+        run: |
+          docker save ecosystem_api_local:latest | gzip > api-image.tar.gz
+          ls -lh api-image.tar.gz
+      - name: Upload API image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-image
+          path: api-image.tar.gz
+          retention-days: 5
+
+  live-recording-rules:
+    needs: [scripts-tests, build-api-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson( inputs.python_versions_json != '' && inputs.python_versions_json || '["3.11"]' ) }}
+    steps:
+      - name: Skip live tests if requested
+        if: ${{ inputs.skip_live_tests == 'true' }}
+        run: echo "skip_live_tests=true -> skipping live job." && exit 0
+      - uses: actions/checkout@v4
+      - name: Skip if docs-only (propagated)
+        if: needs.build-api-image.outputs.docs_only == 'true'
+        run: echo "Docs-only change; skipping." && exit 0
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          pip install pytest jq
+      - name: Download API image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-image
+      - name: Load pre-built image
+        run: |
+          gunzip -c api-image.tar.gz | docker load
+          docker images | grep ecosystem_api_local || (echo 'Image load failed' && exit 1)
+      - name: Start minimal stack
+        run: |
+          mkdir -p docker/ci
+          cat > docker/ci/prometheus.ci.yml <<EOF
+          global:
+            scrape_interval: ${{ inputs.scrape_interval }}
+            evaluation_interval: ${{ inputs.evaluation_interval }}
+          scrape_configs:
+            - job_name: prometheus
+              static_configs:
+                - targets: ['prometheus:9090']
+            - job_name: api
+              static_configs:
+                - targets: ['api:8000']
+          rule_files:
+            - /etc/prometheus/prometheus_rules.yml
+          EOF
+          docker compose -f ${{ inputs.compose_file }} up -d --no-build api prometheus grafana
+          docker cp docker/ci/prometheus.ci.yml ecosystem_prometheus:/etc/prometheus/prometheus.yml
+          curl -X POST -fsS http://localhost:9090/-/reload || echo 'Reload failed'
+          for i in {1..30}; do if curl -fsS http://localhost:8010/health >/dev/null; then break; fi; sleep 2; done
+          curl -f http://localhost:8010/health
+          for i in {1..30}; do if curl -fsS http://localhost:9090/-/ready >/dev/null; then break; fi; sleep 2; done
+          curl -f http://localhost:9090/-/ready
+      - name: Run recording rule materialization test
+        env:
+          PROMETHEUS_URL: http://localhost:9090
+        run: pytest -q tests/integration/test_prometheus_recording_rules_live.py
+      - name: Capture Grafana dashboard panel metadata
+        if: always()
+        run: |
+          mkdir -p artifacts
+          curl -s http://localhost:3030/api/search?query=internal | jq '. | map({id: .id, title: .title, uid: .uid})' > artifacts/grafana_search.json || true
+          for uid in $(jq -r '.[].uid' artifacts/grafana_search.json 2>/dev/null); do
+            curl -s http://localhost:3030/api/dashboards/uid/${uid} | jq '.dashboard | {uid: .uid, title: .title, panels: ( .panels | map({id: .id, title: .title, type: .type, gridPos: .gridPos}) )}' > artifacts/grafana_${uid}.json || true
+          done
+      - name: Assert minimum panel count
+        if: always()
+        run: |
+          COUNT=$(jq '[.[].panels | length] | add' artifacts/grafana_*.json 2>/dev/null || echo 0)
+          echo "Aggregate panel count: $COUNT"
+          if [ -z "$COUNT" ] || [ "$COUNT" -lt ${{ inputs.min_panels }} ]; then
+            echo "Panel count assertion failed" >&2; exit 1; fi
+      - name: Compare Grafana layout to baseline
+        if: always()
+        run: |
+          python scripts/compare_grafana_layout.py --baseline ${{ inputs.baseline_file }} --current-glob 'artifacts/grafana_*.json' --min-panels ${{ inputs.min_panels }} --pos-tolerance ${{ inputs.layout_pos_tolerance }} --size-threshold ${{ inputs.layout_size_change_threshold }} --report artifacts/layout_drift_report.json --prom-metrics artifacts/layout_drift_metrics.prom
+      - name: Validate alert rules against taxonomy
+        run: |
+          python scripts/validate_alert_rules.py --rules ${{ inputs.rules_path }} --taxonomy ${{ inputs.taxonomy_file }} --required-labels "${{ inputs.required_labels }}" --report artifacts/alert_rules_validation_report.json
+      - name: Notify taxonomy drift (optional)
+        if: always()
+        env:
+          TAXONOMY_WEBHOOK_URL: ${{ secrets.TAXONOMY_WEBHOOK_URL }}
+        run: |
+          if [ -n "${TAXONOMY_WEBHOOK_URL}" ]; then
+            python scripts/notify_taxonomy_drift.py --rules ${{ inputs.rules_path }} --taxonomy ${{ inputs.taxonomy_file }} || true
+          else
+            echo 'No TAXONOMY_WEBHOOK_URL secret; skipping taxonomy drift notification.'
+          fi
+      - name: Record first-seen timestamps for metrics
+        run: |
+          mkdir -p artifacts
+          python scripts/recording_rules_first_seen.py --output artifacts/recording_rules_first_seen.json --timeout 60
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-metrics-diagnostics-${{ matrix.python-version }}
+          path: |
+            artifacts/*.json
+            artifacts/*.prom
+          retention-days: ${{ inputs.retention_days }}
+      - name: Dump Prometheus targets (on failure)
+        if: failure()
+        run: |
+          echo 'Active targets:'
+          curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+          curl -s http://localhost:9090/api/v1/rules | jq '.data.groups[].rules[] | {name: .name, query: .query}' || true
+      - name: Upload Prometheus rule file
+        uses: actions/upload-artifact@v4
+        with:
+          name: prometheus-rules
+          path: ${{ inputs.rules_path }}
+          retention-days: 14
+
+  qa-profile:
+    needs: [scripts-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ inputs.skip_live_tests != 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      - name: Start QA profile stack
+        run: |
+          docker compose -f ${{ inputs.compose_file }} --profile qa up -d --no-build api prometheus grafana qa-smoke qa-orchestrator || (docker compose ps && exit 1)
+          echo 'Waiting for API health...'
+          for i in {1..40}; do curl -fsS http://localhost:8010/health && break; sleep 2; done
+          curl -f http://localhost:8010/health
+          echo 'Waiting for Prometheus readiness...'
+          for i in {1..40}; do curl -fsS http://localhost:9090/-/ready && break; sleep 2; done
+          curl -f http://localhost:9090/-/ready
+      - name: Run smoke test inside container (idempotent)
+        run: |
+          docker exec qa_smoke python scripts/smoke_test.py || true
+          docker cp qa_smoke:/app/smoke_results.json smoke_results.json || true
+          docker cp qa_smoke:/app/smoke_metrics.prom smoke_metrics.prom || true
+      - name: Generate taxonomy dashboard
+        run: |
+          python scripts/severity_runbook_dashboard.py --taxonomy alerts_taxonomy.json --html severity_runbook_dashboard.html --prom taxonomy_dashboard_metrics.prom || true
+      - name: Capture resource usage snapshot & rolling metrics
+        run: |
+          mkdir -p trends
+          python scripts/resource_usage_trend.py --jsonl trends/resource_usage.jsonl --prom trends/resource_usage.prom --window 200 || true
+      - name: Collate QA artifacts
+        run: |
+          mkdir -p qa-artifacts
+          mv smoke_results.json qa-artifacts/ 2>/dev/null || true
+          mv smoke_metrics.prom qa-artifacts/ 2>/dev/null || true
+          mv severity_runbook_dashboard.html qa-artifacts/ 2>/dev/null || true
+          mv taxonomy_dashboard_metrics.prom qa-artifacts/ 2>/dev/null || true
+          cp trends/resource_usage.prom qa-artifacts/ 2>/dev/null || true
+          cp trends/resource_usage.jsonl qa-artifacts/ 2>/dev/null || true
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-profile-artifacts
+          path: qa-artifacts/**
+          retention-days: ${{ inputs.retention_days }}
+      - name: Teardown stack
+        if: always()
+        run: docker compose -f ${{ inputs.compose_file }} --profile qa down -v || true

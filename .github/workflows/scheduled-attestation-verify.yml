@@ -1,0 +1,103 @@
+name: Scheduled Attestation Verification
+
+on:
+    schedule:
+        - cron: "17 3 * * *" # Daily at 03:17 UTC (staggered minute)
+    workflow_dispatch:
+        inputs:
+            images_json:
+                description: "Override JSON array of image refs; if empty defaults are used"
+                required: false
+            predicate_types_json:
+                description: 'JSON array of predicate types (default: ["spdxjson","cyclonedx","slsaprovenance"])'
+                required: false
+            require_all:
+                description: "Fail if any attestation missing (default true)"
+                required: false
+                default: "true"
+
+permissions:
+    contents: read
+    packages: read
+
+jobs:
+    verify:
+        name: Verify Attestations (Scheduled)
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: read
+        env:
+            COSIGN_VERSION: v2.2.4
+        steps:
+            - name: Determine images JSON
+              id: imgs
+              run: |
+                  set -e
+                  if [ -n "${{ inputs.images_json }}" ]; then
+                    raw='${{ inputs.images_json }}'
+                  else
+                    raw='["ghcr.io/${{ github.repository }}:latest","ghcr.io/${{ github.repository }}:stable"]'
+                  fi
+                  echo "$raw" | jq -e '.' >/dev/null 2>&1 || { echo 'images_json must be valid JSON array' >&2; exit 1; }
+                  echo "$raw" | jq -r '.[]' > images.txt
+                  echo "count=$(wc -l < images.txt | tr -d ' ')" >> $GITHUB_OUTPUT
+                  echo "raw=$raw" >> $GITHUB_OUTPUT
+            - name: Install cosign
+              run: |
+                  curl -sSfL https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
+                  chmod +x /usr/local/bin/cosign
+                  cosign version || true
+            - name: Verify multi-predicate attestations
+              id: verify
+              run: |
+                  set -e
+                  if [ -n "${{ inputs.predicate_types_json }}" ]; then
+                    PTYPES='${{ inputs.predicate_types_json }}'
+                  else
+                    PTYPES='["spdxjson","cyclonedx","slsaprovenance"]'
+                  fi
+                  echo "$PTYPES" | jq -e '.' >/dev/null 2>&1 || { echo 'predicate_types_json invalid' >&2; exit 1; }
+                  REQUIRE='${{ inputs.require_all || 'true' }}'
+                  mkdir -p results combined
+                  summary=summary.json
+                  echo '{}' | jq '.' > $summary
+                  total_pass=0; total_fail=0
+                  mapfile -t TYPES < <(echo "$PTYPES" | jq -r '.[]')
+                  for TYPE in "${TYPES[@]}"; do
+                    pass=0; fail=0
+                    while read -r img; do
+                      [ -z "$img" ] && continue
+                      safe=$(echo $img | tr '/:@' '____')
+                      log="results/${safe}__${TYPE}.log"
+                      echo "Verifying $TYPE attestation for $img" >&2
+                      if cosign verify-attestation --type "$TYPE" "$img" > "$log" 2>&1; then
+                        pass=$((pass+1))
+                      else
+                        fail=$((fail+1))
+                      fi
+                    done < images.txt
+                    total_pass=$((total_pass+pass)); total_fail=$((total_fail+fail))
+                    tmp=$(mktemp)
+                    jq --arg t "$TYPE" --argjson p $pass --argjson f $fail '. + {($t): {passed:$p, failed:$f}}' $summary > $tmp && mv $tmp $summary
+                  done
+                  echo "passed=$total_pass" >> $GITHUB_OUTPUT
+                  echo "failed=$total_fail" >> $GITHUB_OUTPUT
+                  cp $summary combined/predicate-summary.json
+                  if [ "$REQUIRE" = 'true' ] && [ $total_fail -gt 0 ]; then
+                    echo "Failures detected: $total_fail" >&2
+                    exit 1
+                  fi
+            - name: Upload verification logs
+              uses: actions/upload-artifact@v4
+              with:
+                  name: scheduled-attestation-verify-logs
+                  path: |
+                      results
+                      combined/predicate-summary.json
+            - name: Summary
+              run: |
+                  echo "### Scheduled Attestation Verification" >> $GITHUB_STEP_SUMMARY
+                  echo "Images: ${{ steps.imgs.outputs.count }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Predicates: ${{ inputs.predicate_types_json || '[\"spdxjson\",\"cyclonedx\",\"slsaprovenance\"]' }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Passed: ${{ steps.verify.outputs.passed }}  Failed: ${{ steps.verify.outputs.failed }}" >> $GITHUB_STEP_SUMMARY

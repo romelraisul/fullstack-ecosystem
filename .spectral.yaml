@@ -1,0 +1,58 @@
+extends: spectral:recommended
+
+rules:
+  info-contact: off
+  info-license: off
+  openapi-tags: warn
+  operation-tags: error
+  operation-operationId-unique: error
+  operation-description:
+    description: Operations must have a non-empty description.
+    message: "Operation description is missing or empty."
+    given: $.paths[*][*]
+    severity: error
+    then:
+      field: description
+      function: truthy
+  operation-summary-length:
+    description: Summaries should be concise (< 120 chars)
+    message: "Summary too long (>120 chars)."
+    given: $.paths[*][*].summary
+    severity: warn
+    then:
+      function: length
+      functionOptions:
+        max: 120
+  component-schema-description:
+    description: Components schemas must include description.
+    message: "Schema component lacks description."
+    given: $.components.schemas[*]
+    severity: error
+    then:
+      field: description
+      function: truthy
+  no-empty-parameter-description:
+    description: Parameters must have descriptions.
+    message: "Parameter missing description."
+    given: $.paths[*][*].parameters[*]
+    severity: warn
+    then:
+      field: description
+      function: truthy
+  tag-description-required:
+    description: Tags must include description.
+    message: "Tag missing description."
+    given: $.tags[*]
+    severity: error
+    then:
+      field: description
+      function: truthy
+  operation-operationId-naming:
+    description: operationId must follow verbResource (camelCase) pattern e.g. listRuns, getRun, createFinding.
+    message: "operationId '{value}' does not match required verbResource camelCase pattern."
+    given: $.paths[*][*].operationId
+    severity: error
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(get|list|create|update|delete|patch|post|put)[A-Z][A-Za-z0-9]+$"

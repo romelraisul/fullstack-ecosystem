@@ -1,0 +1,30 @@
+name: Prometheus Recording Rules Live Test
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "docker/prometheus_rules.yml"
+      - "docker-compose.yml"
+      - "tests/integration/test_prometheus_recording_rules_live.py"
+      - ".github/workflows/prometheus-live-test.yml"
+      - "METRICS.md"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "docker/prometheus_rules.yml"
+      - "docker-compose.yml"
+      - "tests/integration/test_prometheus_recording_rules_live.py"
+      - "METRICS.md"
+
+jobs:
+  call-reusable:
+    uses: ./.github/workflows/prometheus-live-test-reusable.yml
+    with:
+      # Provide explicit JSON array for matrix expansion in reusable workflow
+      python_versions_json: '["3.10","3.11","3.12"]'
+      rules_path: "docker/prometheus_rules.yml"
+      compose_file: "docker-compose.yml"
+      baseline_file: "grafana_baseline_panels.json"
+      min_panels: "5"
+      retention_days: "7"

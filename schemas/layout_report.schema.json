@@ -1,0 +1,157 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "layout_report.schema.json",
+    "title": "Grafana Layout Validation Report",
+    "type": "object",
+    "required": [
+        "schema_version",
+        "status",
+        "baseline_panel_count",
+        "current_panel_count",
+        "missing_panels",
+        "overlaps",
+        "minor_drift",
+        "major_drift",
+        "minor_drift_percent_current",
+        "minor_drift_percent_baseline",
+        "size_changes_minor",
+        "size_changes_major",
+        "size_change_percent_baseline",
+        "size_threshold",
+        "size_threshold_breach",
+        "tolerance"
+    ],
+    "properties": {
+        "schema_version": {
+            "type": "integer",
+            "enum": [
+                2
+            ]
+        },
+        "status": {
+            "type": "string",
+            "enum": [
+                "pass",
+                "fail"
+            ]
+        },
+        "baseline_panel_count": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "current_panel_count": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "missing_panels": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "overlaps": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "minItems": 2,
+                "maxItems": 2
+            }
+        },
+        "minor_drift": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "integer"
+                        }
+                    ]
+                }
+            }
+        },
+        "major_drift": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            }
+        },
+        "minor_drift_percent_current": {
+            "type": "number",
+            "minimum": 0
+        },
+        "minor_drift_percent_baseline": {
+            "type": "number",
+            "minimum": 0
+        },
+        "size_changes_minor": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "integer"
+                        }
+                    ]
+                }
+            }
+        },
+        "size_changes_major": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "integer"
+                        }
+                    ]
+                }
+            }
+        },
+        "size_change_percent_baseline": {
+            "type": "number",
+            "minimum": 0
+        },
+        "size_threshold": {
+            "type": "integer"
+        },
+        "size_threshold_breach": {
+            "type": "boolean"
+        },
+        "tolerance": {
+            "type": "integer",
+            "minimum": 0
+        }
+    },
+    "additionalProperties": true
+}

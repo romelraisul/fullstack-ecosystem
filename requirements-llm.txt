@@ -1,0 +1,6 @@
+# Heavy LLM and embedding dependencies (optional)
+transformers>=4.35.0
+langchain>=0.1.0
+openai>=1.0.0
+anthropic>=1.0.0
+accelerate>=0.20.0

@@ -1,0 +1,38 @@
+name: Security Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  security-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Scan Nginx configuration
+        run: python ci/scan_nginx_config.py
+
+      - name: Start services
+        run: docker compose -f docker-compose.yml -f docker-compose.oauth2-proxy.yml up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          chmod +x scripts/wait-for-services.sh
+          ./scripts/wait-for-services.sh
+
+      - name: Probe endpoints
+        run: python ci/probe_endpoints.py

@@ -1,15 +1,20 @@
 from __future__ import annotations
+
 import time
-import jwt  # type: ignore
-import httpx
 from typing import Any
+
+import httpx
+import jwt  # type: ignore
+
 from .config import get_settings
 
 # NOTE: PyJWT is required but not listed explicitly; cryptography handles signing.
 # If PyJWT isn't available, add it to requirements.
 
+
 class GitHubAuthError(Exception):
     pass
+
 
 class GitHubClient:
     def __init__(self):
@@ -24,7 +29,7 @@ class GitHubClient:
         payload = {
             "iat": now - 60,
             "exp": now + (8 * 60),  # 8 minutes
-            "iss": self.settings.app_id
+            "iss": self.settings.app_id,
         }
         token = jwt.encode(payload, self.settings.private_key, algorithm="RS256")
         return token if isinstance(token, str) else token.decode()
@@ -32,14 +37,23 @@ class GitHubClient:
     async def get_installation_token(self, installation_id: int) -> str:
         jwt_token = self._generate_jwt()
         url = f"{self.settings.github_api_url}/app/installations/{installation_id}/access_tokens"
-        async with httpx.AsyncClient(headers={"Authorization": f"Bearer {jwt_token}", "Accept": "application/vnd.github+json"}) as client:
+        async with httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {jwt_token}",
+                "Accept": "application/vnd.github+json",
+            }
+        ) as client:
             resp = await client.post(url)
             if resp.status_code >= 300:
-                raise GitHubAuthError(f"Failed to get installation token: {resp.status_code} {resp.text}")
+                raise GitHubAuthError(
+                    f"Failed to get installation token: {resp.status_code} {resp.text}"
+                )
             data: dict[str, Any] = resp.json()
             return data["token"]
 
-    async def get_workflow_file(self, owner: str, repo: str, path: str, token: str, ref: str = "heads/main") -> str | None:
+    async def get_workflow_file(
+        self, owner: str, repo: str, path: str, token: str, ref: str = "heads/main"
+    ) -> str | None:
         # GitHub raw content API
         url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
         async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as client:
@@ -48,7 +62,16 @@ class GitHubClient:
                 return r.text
             return None
 
-    async def create_check_run(self, owner: str, repo: str, name: str, head_sha: str, token: str, summary: str, conclusion: str | None = None):
+    async def create_check_run(
+        self,
+        owner: str,
+        repo: str,
+        name: str,
+        head_sha: str,
+        token: str,
+        summary: str,
+        conclusion: str | None = None,
+    ):
         url = f"{self.settings.github_api_url}/repos/{owner}/{repo}/check-runs"
         payload = {
             "name": name,
@@ -62,10 +85,9 @@ class GitHubClient:
             "summary": summary[:65000],
         }
         payload["output"] = output
-        async with httpx.AsyncClient(headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json"
-        }) as client:
+        async with httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+        ) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code >= 300:
                 raise GitHubAuthError(f"Check run creation failed: {resp.status_code} {resp.text}")

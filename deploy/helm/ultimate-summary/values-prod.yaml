@@ -1,0 +1,44 @@
+# Production overrides
+image:
+  tag: stable
+
+env:
+  LOG_LEVEL: INFO
+  JSON_LOGGING: "true"
+  ENABLE_TRACING: "true"
+  ENABLE_ASYNC_MIGRATIONS: "true"
+  SUMMARY_AUTH_SECRET: ${SUMMARY_AUTH_SECRET}
+  TRACING_ENDPOINT: http://otel-collector:4317
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 300m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: ultimate.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 65
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s

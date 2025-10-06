@@ -15,6 +15,11 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 changed=0
+vendor_meta=${VENDOR_ACTION_METADATA:-0}
+meta_dir=".github/action-metadata"
+if [[ "$vendor_meta" == "1" ]]; then
+  mkdir -p "$meta_dir"
+fi
 
 while IFS= read -r -d '' file; do
   while IFS= read -r line; do
@@ -40,6 +45,11 @@ while IFS= read -r -d '' file; do
       esc_full=$(printf '%s\n' "$full" | sed -e 's/[\/[\*\&]/\\&/g')
       esc_repl="uses: $repo@$sha"
       sed -i.bak -e "s|$esc_full|$esc_repl|" "$file"
+      if [[ "$vendor_meta" == "1" ]]; then
+        meta_file="$meta_dir/${repo//\//__}.json"
+        echo "Fetching metadata for $repo" >&2
+        gh api repos/$repo -q '{"full_name": .full_name, "description": .description, "default_branch": .default_branch, "stars": .stargazers_count, "license": (.license.spdx_id // \"NONE\"), "archived": .archived, "visibility": .visibility}' > "$meta_file" 2>/dev/null || true
+      fi
       changed=1
     fi
   done < "$file"

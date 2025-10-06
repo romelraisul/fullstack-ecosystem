@@ -1,0 +1,47 @@
+name: security-headers
+
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.platforms.yml'
+      - 'blockchain_crypto_platform.py'
+      - 'tests/integration/test_security_headers.py'
+      - '.github/workflows/security-headers.yml'
+  workflow_dispatch: {}
+
+jobs:
+  test-security-headers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements_platforms.txt ]; then pip install -r requirements_platforms.txt; fi
+          pip install pytest requests urllib3
+
+      - name: Launch blockchain service (uvicorn)
+        run: |
+          nohup python -m uvicorn blockchain_crypto_platform:app --host 0.0.0.0 --port 5205 &
+          sleep 3
+
+      - name: Run security headers test directly against app (fallback)
+        env:
+          PYTEST_ADDOPTS: -q
+        run: |
+          # Adjust test to point to local direct port instead of Traefik (8444) for CI simplicity.
+          sed -i "s#https://localhost:8444/blockchain#http://localhost:5205/blockchain#g" tests/integration/test_security_headers.py
+          pytest tests/integration/test_security_headers.py::test_security_headers_present
+
+      - name: Restore test URL
+        if: always()
+        run: |
+          git checkout -- tests/integration/test_security_headers.py

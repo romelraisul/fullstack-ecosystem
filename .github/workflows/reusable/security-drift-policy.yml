@@ -1,0 +1,96 @@
+name: Security Drift & Policy
+on:
+    workflow_call:
+        inputs:
+            fail-on:
+                type: string
+                required: false
+                default: critical
+            critical:
+                type: number
+                required: false
+                default: 0
+            high:
+                type: number
+                required: false
+                default: 0
+            medium:
+                type: number
+                required: false
+                default: 0
+        outputs:
+            decision:
+                description: Policy decision
+                value: ${{ jobs.policy.outputs.decision }}
+            reason:
+                description: Policy reason
+                value: ${{ jobs.policy.outputs.reason }}
+            drift-status:
+                description: SBOM drift status
+                value: ${{ jobs.policy.outputs.drift_status }}
+
+jobs:
+    policy:
+        runs-on: ubuntu-latest
+        outputs:
+            decision: ${{ steps.eval.outputs.decision }}
+            reason: ${{ steps.eval.outputs.reason }}
+            drift_status: ${{ steps.drift.outputs.status }}
+        steps:
+            - name: Capture phase start
+              id: phase_start
+              run: echo "start_ts=$(date -u +%s)" >> $GITHUB_OUTPUT
+            - uses: actions/checkout@v4
+            - name: Download sbom artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: sbom-provenance
+                  path: ./prev
+            - name: Extract component list
+              run: |
+                  jq -r '.components[]?.name' prev/sbom.cdx.json 2>/dev/null | sort -u > current-components.txt || true
+            - name: Drift compare (no history)
+              id: drift
+              run: |
+                  # placeholder drift status in reusable form (history resolution handled upstream orchestrator)
+                  if [ ! -s current-components.txt ]; then echo 'status=unknown' >> $GITHUB_OUTPUT; else echo 'status=unknown' >> $GITHUB_OUTPUT; fi
+            - name: Evaluate policy
+              id: eval
+              run: |
+                  POLICY='${{ inputs.fail-on }}'
+                  CRIT='${{ inputs.critical }}'
+                  HIGH='${{ inputs.high }}'
+                  MED='${{ inputs.medium }}'
+                  status="pass"; reason="No violations"
+                  case "$POLICY" in
+                      critical) [ "$CRIT" -gt 0 ] && { status="fail"; reason="critical vulns"; };;
+                      high) combo=$((CRIT+HIGH)); [ "$combo" -gt 0 ] && { status="fail"; reason="high/critical vulns"; };;
+                      medium) combo=$((CRIT+HIGH+MED)); [ "$combo" -gt 0 ] && { status="fail"; reason="medium/high/critical vulns"; };;
+                      any) combo=$((CRIT+HIGH)); [ "$combo" -gt 0 ] && { status="fail"; reason="any high/critical vulns"; };;
+                      none) status="pass"; reason="policy none" ;;
+                      *) status="fail"; reason="unknown policy" ;;
+                  esac
+                  echo "decision=$status" >> $GITHUB_OUTPUT
+                  echo "reason=$reason" >> $GITHUB_OUTPUT
+                  TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                  jq -n --arg policy "$POLICY" --arg crit "$CRIT" --arg high "$HIGH" --arg med "$MED" --arg decision "$status" --arg reason "$reason" --arg ts "$TS" '{policy:$policy,critical:($crit|tonumber),high:($high|tonumber),medium:($med|tonumber),decision:$decision,reason:$reason,timestamp:$ts}' > policy-evaluation.json
+            - name: Upload policy evaluation (placeholder)
+              uses: actions/upload-artifact@v4
+              with:
+                  name: policy-evaluation
+                  path: |
+                      current-components.txt
+                      policy-evaluation.json
+            - name: Emit phase metrics
+              if: always()
+              run: |
+                  START=${{ steps.phase_start.outputs.start_ts || '0' }}
+                  END=$(date -u +%s)
+                  DURATION=$((END-START))
+                  jq -n --arg start "$START" --arg end "$END" --arg dur "$DURATION" '{phase:"drift-policy",start:($start|tonumber),end:($end|tonumber),duration_sec:($dur|tonumber)}' > metrics-drift-policy.json
+            - name: Upload phase metrics
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: metrics-drift-policy
+                  path: metrics-drift-policy.json

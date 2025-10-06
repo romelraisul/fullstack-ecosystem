@@ -1,0 +1,385 @@
+name: SDK Publishing Validation
+
+on:
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main]
+    schedule:
+        # Run weekly on Sundays at 02:00 UTC
+        - cron: "0 2 * * 0"
+    workflow_dispatch:
+        inputs:
+            package_path:
+                description: "Package path to validate (relative to repository root)"
+                required: false
+                default: "."
+            strict_mode:
+                description: "Enable strict validation mode"
+                required: false
+                default: "false"
+                type: choice
+                options:
+                    - "true"
+                    - "false"
+
+jobs:
+    sdk-validation:
+        name: SDK Publishing Validation
+        runs-on: ubuntu-latest
+
+        strategy:
+            matrix:
+                python-version: ["3.9", "3.10", "3.11"]
+                package-type: ["python", "node"]
+            fail-fast: false
+
+        env:
+            SDK_VALIDATION_OUTPUT: sdk-validation-report-${{ matrix.python-version }}-${{ matrix.package-type }}.json
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0 # Full history for comprehensive validation
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v4
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Set up Node.js (for Node.js package validation)
+              if: matrix.package-type == 'node'
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "18"
+                  cache: "npm"
+
+            - name: Install Python dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install pytest pytest-cov tomli tomllib-w
+                  if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                  if [ -f test-requirements.txt ]; then pip install -r test-requirements.txt; fi
+
+            - name: Install additional validation tools
+              run: |
+                  # Install security scanning tools
+                  pip install safety bandit semgrep
+
+                  # Install package analysis tools
+                  pip install check-manifest twine
+
+                  # Install Node.js tools if needed
+                  if [ "${{ matrix.package-type }}" == "node" ]; then
+                    npm install -g npm-audit-resolver audit-ci
+                  fi
+
+            - name: Create validation config
+              run: |
+                  cat > sdk-validation-config.json << 'EOF'
+                  {
+                    "strict_mode": ${{ github.event.inputs.strict_mode || 'false' }},
+                    "security_checks": {
+                      "scan_dependencies": true,
+                      "check_sensitive_files": true,
+                      "detect_hardcoded_secrets": true
+                    },
+                    "compatibility_checks": {
+                      "require_semantic_versioning": true,
+                      "require_changelog": false,
+                      "check_api_documentation": true
+                    },
+                    "build_system_checks": {
+                      "require_ci_config": false,
+                      "require_test_config": true,
+                      "require_build_config": false
+                    },
+                    "package_structure_checks": {
+                      "require_readme": true,
+                      "require_license": false,
+                      "require_tests": true,
+                      "require_setup_files": true
+                    }
+                  }
+                  EOF
+
+            - name: Run SDK validation tests
+              run: |
+                  echo "🧪 Running SDK validation test suite..."
+                  python -m pytest tests/test_sdk_validation.py -v \
+                    --cov=scripts.validate_sdk_publishing \
+                    --cov-report=xml \
+                    --cov-report=html \
+                    --cov-report=term-missing \
+                    --junit-xml=sdk-validation-tests-${{ matrix.python-version }}.xml
+
+            - name: Run SDK validation on current package
+              run: |
+                  PACKAGE_PATH="${{ github.event.inputs.package_path || '.' }}"
+                  echo "📦 Validating package at: $PACKAGE_PATH"
+
+                  python scripts/validate_sdk_publishing.py "$PACKAGE_PATH" \
+                    --output "$SDK_VALIDATION_OUTPUT" \
+                    --format json \
+                    --config sdk-validation-config.json \
+                    ${{ github.event.inputs.strict_mode == 'true' && '--strict' || '' }}
+
+                  echo "✅ SDK validation completed"
+
+            - name: Run additional security scans
+              continue-on-error: true
+              run: |
+                  echo "🔒 Running additional security scans..."
+
+                  # Safety check for Python dependencies
+                  if [ -f requirements.txt ]; then
+                    echo "🔍 Scanning Python dependencies with Safety..."
+                    safety check --json --output safety-report.json || true
+                  fi
+
+                  # Bandit security linter for Python code
+                  echo "🔍 Running Bandit security analysis..."
+                  bandit -r . -f json -o bandit-report.json \
+                    --exclude ./tests,./venv,./env,./node_modules \
+                    --skip B101,B601 || true
+
+                  # Node.js audit if applicable
+                  if [ "${{ matrix.package-type }}" == "node" ] && [ -f package.json ]; then
+                    echo "🔍 Running NPM security audit..."
+                    npm audit --audit-level moderate --json > npm-audit.json || true
+                  fi
+
+            - name: Parse validation results
+              id: validation_results
+              run: |
+                  echo "📊 Parsing validation results..."
+
+                  if [ -f "$SDK_VALIDATION_OUTPUT" ]; then
+                    # Extract key metrics from validation report
+                    OVERALL_STATUS=$(jq -r '.overall_status' "$SDK_VALIDATION_OUTPUT")
+                    TOTAL_CHECKS=$(jq -r '.metadata.total_checks' "$SDK_VALIDATION_OUTPUT")
+                    PASS_COUNT=$(jq -r '.summary.pass' "$SDK_VALIDATION_OUTPUT")
+                    FAIL_COUNT=$(jq -r '.summary.fail' "$SDK_VALIDATION_OUTPUT")
+                    WARNING_COUNT=$(jq -r '.summary.warning' "$SDK_VALIDATION_OUTPUT")
+
+                    echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+                    echo "total_checks=$TOTAL_CHECKS" >> $GITHUB_OUTPUT
+                    echo "pass_count=$PASS_COUNT" >> $GITHUB_OUTPUT
+                    echo "fail_count=$FAIL_COUNT" >> $GITHUB_OUTPUT
+                    echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+
+                    # Create summary
+                    echo "## 📊 SDK Validation Results - Python ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+                    echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+                    echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+                    echo "| Overall Status | $OVERALL_STATUS |" >> $GITHUB_STEP_SUMMARY
+                    echo "| Total Checks | $TOTAL_CHECKS |" >> $GITHUB_STEP_SUMMARY
+                    echo "| ✅ Passed | $PASS_COUNT |" >> $GITHUB_STEP_SUMMARY
+                    echo "| ❌ Failed | $FAIL_COUNT |" >> $GITHUB_STEP_SUMMARY
+                    echo "| ⚠️ Warnings | $WARNING_COUNT |" >> $GITHUB_STEP_SUMMARY
+
+                    # Show critical failures
+                    CRITICAL_FAILURES=$(jq -r '.results[] | select(.severity == "critical" and .status == "fail") | .name' "$SDK_VALIDATION_OUTPUT")
+                    if [ ! -z "$CRITICAL_FAILURES" ]; then
+                      echo "" >> $GITHUB_STEP_SUMMARY
+                      echo "### 🚨 Critical Issues" >> $GITHUB_STEP_SUMMARY
+                      echo "$CRITICAL_FAILURES" | while read -r issue; do
+                        echo "- $issue" >> $GITHUB_STEP_SUMMARY
+                      done
+                    fi
+                  else
+                    echo "⚠️ Validation report not found"
+                    echo "overall_status=unknown" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Upload validation reports
+              uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: sdk-validation-reports-${{ matrix.python-version }}-${{ matrix.package-type }}
+                  path: |
+                      ${{ env.SDK_VALIDATION_OUTPUT }}
+                      sdk-validation-tests-${{ matrix.python-version }}.xml
+                      safety-report.json
+                      bandit-report.json
+                      npm-audit.json
+                      htmlcov/
+                  retention-days: 30
+
+            - name: Upload test results
+              uses: dorny/test-reporter@v1
+              if: always()
+              with:
+                  name: SDK Validation Tests (Python ${{ matrix.python-version }})
+                  path: sdk-validation-tests-${{ matrix.python-version }}.xml
+                  reporter: java-junit
+                  fail-on-error: false
+
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@v3
+              if: matrix.python-version == '3.11' && matrix.package-type == 'python'
+              with:
+                  file: ./coverage.xml
+                  flags: sdk-validation
+                  name: SDK Validation Coverage
+                  fail_ci_if_error: false
+
+            - name: Check validation status
+              if: steps.validation_results.outputs.overall_status == 'critical'
+              run: |
+                  echo "💥 Critical validation failures detected!"
+                  echo "See the validation report for details."
+                  exit 1
+
+    sdk-validation-summary:
+        name: SDK Validation Summary
+        needs: sdk-validation
+        runs-on: ubuntu-latest
+        if: always()
+
+        steps:
+            - name: Download all validation reports
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: sdk-validation-reports-*
+                  merge-multiple: true
+
+            - name: Generate consolidated report
+              run: |
+                  echo "📋 Generating consolidated SDK validation report..."
+
+                  # Create consolidated summary
+                  echo "# 📊 SDK Validation Summary" > validation-summary.md
+                  echo "" >> validation-summary.md
+                  echo "## Results by Python Version and Package Type" >> validation-summary.md
+                  echo "" >> validation-summary.md
+                  echo "| Python | Package Type | Status | Pass | Fail | Warn |" >> validation-summary.md
+                  echo "|--------|--------------|--------|------|------|------|" >> validation-summary.md
+
+                  # Process each report
+                  for report in sdk-validation-report-*.json; do
+                    if [ -f "$report" ]; then
+                      VERSION=$(echo "$report" | sed 's/.*-\([0-9]\+\.[0-9]\+\)-.*\.json/\1/')
+                      TYPE=$(echo "$report" | sed 's/.*-[0-9]\+\.[0-9]\+-\(.*\)\.json/\1/')
+                      STATUS=$(jq -r '.overall_status' "$report")
+                      PASS=$(jq -r '.summary.pass' "$report")
+                      FAIL=$(jq -r '.summary.fail' "$report")
+                      WARN=$(jq -r '.summary.warning' "$report")
+
+                      echo "| $VERSION | $TYPE | $STATUS | $PASS | $FAIL | $WARN |" >> validation-summary.md
+                    fi
+                  done
+
+                  # Add recommendations
+                  echo "" >> validation-summary.md
+                  echo "## 💡 Recommendations" >> validation-summary.md
+                  echo "" >> validation-summary.md
+                  echo "Based on the validation results, consider the following improvements:" >> validation-summary.md
+                  echo "" >> validation-summary.md
+
+                  # Check for common issues across reports
+                  if ls sdk-validation-report-*.json &> /dev/null; then
+                    COMMON_FAILURES=$(jq -s '[.[].results[] | select(.status == "fail")] | group_by(.name) | map(select(length > 1)) | map(.[0].name) | .[]' sdk-validation-report-*.json 2>/dev/null || echo "[]")
+
+                    if [ "$COMMON_FAILURES" != "[]" ]; then
+                      echo "### Common Issues Across Environments" >> validation-summary.md
+                      echo "$COMMON_FAILURES" | jq -r '.' | while read -r issue; do
+                        echo "- $issue" >> validation-summary.md
+                      done
+                    fi
+                  fi
+
+                  echo "- Ensure all required files (README.md, LICENSE, setup.py/pyproject.toml) are present" >> validation-summary.md
+                  echo "- Add comprehensive test coverage" >> validation-summary.md
+                  echo "- Include proper documentation and API references" >> validation-summary.md
+                  echo "- Follow semantic versioning guidelines" >> validation-summary.md
+                  echo "- Implement security scanning in your development workflow" >> validation-summary.md
+
+            - name: Create summary comment for PR
+              if: github.event_name == 'pull_request'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const fs = require('fs');
+
+                      try {
+                        const summary = fs.readFileSync('validation-summary.md', 'utf8');
+
+                        // Find existing comment
+                        const { data: comments } = await github.rest.issues.listComments({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                        });
+
+                        const existingComment = comments.find(comment =>
+                          comment.body.includes('📊 SDK Validation Summary')
+                        );
+
+                        const commentBody = `<!-- SDK Validation Summary -->\n${summary}`;
+
+                        if (existingComment) {
+                          await github.rest.issues.updateComment({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            comment_id: existingComment.id,
+                            body: commentBody
+                          });
+                        } else {
+                          await github.rest.issues.createComment({
+                            owner: context.repo.owner,
+                            repo: context.repo.repo,
+                            issue_number: context.issue.number,
+                            body: commentBody
+                          });
+                        }
+                      } catch (error) {
+                        console.log('Could not create/update PR comment:', error.message);
+                      }
+
+            - name: Upload consolidated report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sdk-validation-consolidated-summary
+                  path: |
+                      validation-summary.md
+                  retention-days: 90
+
+    security-scan:
+        name: Enhanced Security Scanning
+        runs-on: ubuntu-latest
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Run Semgrep security analysis
+              uses: semgrep/semgrep-action@v1
+              with:
+                  config: >-
+                      p/security-audit
+                      p/secrets
+                      p/owasp-top-ten
+                  generateSarif: "1"
+
+            - name: Upload Semgrep results to GitHub
+              uses: github/codeql-action/upload-sarif@v2
+              if: always()
+              with:
+                  sarif_file: semgrep.sarif
+
+            - name: Run Trivy vulnerability scanner
+              uses: aquasecurity/trivy-action@master
+              with:
+                  scan-type: "fs"
+                  scan-ref: "."
+                  format: "sarif"
+                  output: "trivy-results.sarif"
+
+            - name: Upload Trivy results to GitHub
+              uses: github/codeql-action/upload-sarif@v2
+              if: always()
+              with:
+                  sarif_file: "trivy-results.sarif"

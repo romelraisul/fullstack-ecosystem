@@ -1,0 +1,158 @@
+name: Quantile Benchmark & Comment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore benchmark artifact cache
+        id: cache-artifacts
+        uses: actions/cache@v4
+        with:
+          path: artifacts
+          key: quant-bench-${{ github.base_ref }}
+          restore-keys: |
+            quant-bench-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install prometheus_client only (tests.utils.metrics depends on it)
+          pip install prometheus_client mypy
+
+      - name: Run benchmark
+        env:
+          BENCH_COMMIT: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          python scripts/benchmark_metrics_quantiles.py --json-out artifacts/quantile_bench_${{ github.sha }}.json
+
+      - name: Prune old artifacts (keep last 100)
+        run: |
+          python scripts/prune_benchmark_artifacts.py --dir artifacts --keep 100 || true
+
+      - name: Aggregate history (cached + current)
+        run: |
+          python scripts/aggregate_quantile_benchmarks.py --input-glob "artifacts/quantile_bench_*.json" \
+            --json-out artifacts/aggregate.json --markdown-out artifacts/aggregate.md --rolling-window 7 \
+            --max-p95-increase 1.10 --max-p99-increase 1.15 --max-stdev-multiplier 2.0 \
+            --svg-out artifacts/percentiles.svg || true
+
+      - name: Generate badge JSON
+        if: success()
+        run: |
+          if [ -f artifacts/aggregate.json ]; then
+            batch=$(jq -r '.latest.batch_speedup' artifacts/aggregate.json)
+            indiv=$(jq -r '.latest.individual_speedup' artifacts/aggregate.json)
+            best=$(jq -r '[.history[].batch_speedup] | max' artifacts/aggregate.json 2>/dev/null || echo 0)
+            # Validate numeric
+            if ! echo "$batch" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then batch=0; fi
+            if ! echo "$indiv" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then indiv=0; fi
+            if ! echo "$best" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then best=$batch; fi
+            batch_color=$(python -c "v=float('$batch');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            indiv_color=$(python -c "v=float('$indiv');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            best_color=$(python -c "v=float('$best');print('brightgreen' if v>=1.2 else 'green' if v>=1.1 else 'yellow' if v>=1.05 else 'orange' if v>=1.0 else 'red')")
+            printf '{"schemaVersion":1,"label":"batch speedup","message":"%.2fx","color":"%s"}' "$batch" "$batch_color" > artifacts/batch_speedup_badge.json
+            printf '{"schemaVersion":1,"label":"indiv speedup","message":"%.2fx","color":"%s"}' "$indiv" "$indiv_color" > artifacts/individual_speedup_badge.json
+            printf '{"schemaVersion":1,"label":"best batch speedup","message":"%.2fx","color":"%s"}' "$best" "$best_color" > artifacts/best_speedup_badge.json
+            echo "Batch badge: $(cat artifacts/batch_speedup_badge.json)"
+            echo "Individual badge: $(cat artifacts/individual_speedup_badge.json)"
+            echo "Best batch badge: $(cat artifacts/best_speedup_badge.json)"
+          else
+            echo "aggregate.json missing; skipping badge generation"
+          fi
+
+      - name: Regression gate
+        run: |
+          THRESHOLD="${{ vars.BENCH_MIN_SPEEDUP }}"
+          if [ -z "$THRESHOLD" ]; then THRESHOLD="1.05"; fi
+          if [ -f artifacts/aggregate.json ]; then
+            batch=$(jq -r '.latest.batch_speedup' artifacts/aggregate.json)
+            python -c "import sys;batch=float('$batch');th=float('$THRESHOLD');\nimport math;\nprint(f'FAIL: batch speedup {batch:.2f}x < threshold {th:.2f}x') or sys.exit(1) if batch < th else print(f'OK: batch speedup {batch:.2f}x >= threshold {th:.2f}x')"
+          else
+            echo 'No aggregate.json found; skipping gate'
+          fi
+
+      - name: Run mypy on scripts
+        run: |
+          mypy scripts/benchmark_metrics_quantiles.py scripts/aggregate_quantile_benchmarks.py scripts/load_env.py || true
+
+      - name: Prepare PR comment body
+        id: prep
+        run: |
+          echo '### Quantile Benchmark Summary' > comment.md
+          if [ -f artifacts/aggregate.md ]; then
+            echo '' >> comment.md
+            cat artifacts/aggregate.md >> comment.md
+          fi
+          if [ -f artifacts/aggregate.json ]; then
+            batch_speedup=$(jq -r '.latest.batch_speedup' artifacts/aggregate.json 2>/dev/null || echo 'n/a')
+            indiv_speedup=$(jq -r '.latest.individual_speedup' artifacts/aggregate.json 2>/dev/null || echo 'n/a')
+            best_speedup=$(jq -r '[.history[].batch_speedup] | max' artifacts/aggregate.json 2>/dev/null || echo 'n/a')
+            echo '' >> comment.md
+            echo "Latest batch speedup: ${batch_speedup}x" >> comment.md
+            echo "Latest individual speedup: ${indiv_speedup}x" >> comment.md
+            echo "Best historical batch speedup: ${best_speedup}x" >> comment.md
+            # Guardrails summary
+            guards=$(jq -r '.guardrails // empty' artifacts/aggregate.json)
+            if [ -n "$guards" ]; then
+              echo '' >> comment.md
+              echo '#### Guardrails' >> comment.md
+              jq -r '.guardrails[] | "- \(.type): \(.status) (latest=\(.latest_ms // .latest_stdev_ms) rolling=\(.rolling_mean_ms // .rolling_stdev_ms))"' artifacts/aggregate.json >> comment.md || true
+            fi
+            if [ -f artifacts/percentiles.svg ]; then
+              echo '' >> comment.md
+              echo '<details><summary>Percentile Trend SVG</summary>' >> comment.md
+              echo '' >> comment.md
+              echo '<img src="data:image/svg+xml;base64,'$(base64 -w0 artifacts/percentiles.svg)'" alt="percentile trend" />' >> comment.md
+              echo '' >> comment.md
+              echo '</details>' >> comment.md
+            fi
+            echo '' >> comment.md
+            echo 'Badges (will render once published on gh-pages in nightly runs):' >> comment.md
+            echo '![Batch](https://img.shields.io/endpoint?url=https://<user_or_org>.github.io/<repo>/benchmark/batch_speedup_badge.json) ![Individual](https://img.shields.io/endpoint?url=https://<user_or_org>.github.io/<repo>/benchmark/individual_speedup_badge.json) ![Best](https://img.shields.io/endpoint?url=https://<user_or_org>.github.io/<repo>/benchmark/best_speedup_badge.json)' >> comment.md
+            echo '' >> comment.md
+            echo 'Nightly dashboard (after publish): https://<user_or_org>.github.io/<repo>/benchmark/index.html' >> comment.md
+          fi
+          echo 'comment_body<<EOF' >> $GITHUB_OUTPUT
+          cat comment.md >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Post or update PR comment
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: ${{ steps.prep.outputs.comment_body }}
+          comment_tag: quantile-benchmark
+          mode: recreate
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantile-benchmark
+          path: artifacts
+          if-no-files-found: ignore
+
+      - name: Save artifact cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts
+          key: quant-bench-${{ github.base_ref }}

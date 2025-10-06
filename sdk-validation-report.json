@@ -1,0 +1,139 @@
+{
+  "package_name": "test-package",
+  "version": "unknown",
+  "timestamp": "2025-10-04T02:09:52.560650Z",
+  "overall_status": "fail",
+  "results": [
+    {
+      "name": "Required File: README.md",
+      "status": "pass",
+      "message": "README file found",
+      "details": {
+        "file_size": 6
+      },
+      "severity": "info"
+    },
+    {
+      "name": "Required File: LICENSE",
+      "status": "warning",
+      "message": "License file not found",
+      "details": null,
+      "severity": "high"
+    },
+    {
+      "name": "Required File: setup.py",
+      "status": "warning",
+      "message": "Setup script (Python) not found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Required File: pyproject.toml",
+      "status": "warning",
+      "message": "Project config (Python) not found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Required File: requirements.txt",
+      "status": "warning",
+      "message": "Dependencies (Python) not found",
+      "details": null,
+      "severity": "high"
+    },
+    {
+      "name": "Source Directory",
+      "status": "fail",
+      "message": "No source directory found",
+      "details": {
+        "checked_paths": [
+          "src",
+          "test-package",
+          "lib"
+        ]
+      },
+      "severity": "high"
+    },
+    {
+      "name": "Test Directory",
+      "status": "warning",
+      "message": "No test directory found",
+      "details": {
+        "checked_paths": [
+          "tests",
+          "test",
+          "spec"
+        ]
+      },
+      "severity": "medium"
+    },
+    {
+      "name": "Sensitive Files",
+      "status": "pass",
+      "message": "No sensitive files found",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Hardcoded Secrets",
+      "status": "pass",
+      "message": "No hardcoded secrets detected",
+      "details": null,
+      "severity": "info"
+    },
+    {
+      "name": "Changelog File",
+      "status": "warning",
+      "message": "No changelog file found - consider adding CHANGELOG.md",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Version Detection",
+      "status": "warning",
+      "message": "Could not detect package version",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "API Documentation",
+      "status": "warning",
+      "message": "No API documentation files found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "CI/CD Configuration",
+      "status": "warning",
+      "message": "No CI/CD configuration found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Build Configuration",
+      "status": "warning",
+      "message": "No build configuration found",
+      "details": null,
+      "severity": "medium"
+    },
+    {
+      "name": "Test Configuration",
+      "status": "warning",
+      "message": "No test configuration found",
+      "details": null,
+      "severity": "medium"
+    }
+  ],
+  "metadata": {
+    "package_path": "C:\\Users\\romel\\AppData\\Local\\Temp\\tmp21u6h864\\test-package",
+    "validation_config": {},
+    "total_checks": 15,
+    "validator_version": "1.0.0"
+  },
+  "summary": {
+    "pass": 3,
+    "fail": 1,
+    "warning": 11,
+    "skip": 0
+  }
+}

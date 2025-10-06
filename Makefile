@@ -3,13 +3,17 @@
 PROJECT?=fullstack-ecosystem
 PY?=python
 PROMTOOL_VERSION?=2.52.0
+SUMMARY_APP?=autogen.ultimate_enterprise_summary:UltimateEnterpriseSummary().app
+SUMMARY_PORT?=8000
 
-.PHONY: help up down restart logs prom-rules prom-rules-test promtool-install tldr seed-fleet seeder-dry-run ci-local build test platforms-up platforms-down alerts-sync alerts-validate mypy
+.PHONY: help up down restart logs prom-rules prom-rules-test promtool-install tldr seed-fleet seeder-dry-run ci-local build test platforms-up platforms-down alerts-sync alerts-validate mypy type-check type-baseline pre-commit-install pre-commit-run pre-commit-update pre-commit-install pre-commit-run pre-commit-update
 
-help:
+	help:
 	@echo 'Targets:'
 	@echo '  up           - Start (docker compose up -d)' \
 	      'and wait basic services'
+	@echo '  summary-run  - Run summary service locally (uvicorn)'
+	@echo '  summary-smoke - Run smoke auth script against local summary'
 	@echo '  down         - Stop & remove containers'
 	@echo '  restart      - Restart core observability services'
 	@echo '  logs         - Tail gateway + summary'
@@ -26,10 +30,21 @@ help:
 	@echo '  alerts-sync    - Sync alert taxonomy JSON with rules'
 	@echo '  alerts-validate- Validate taxonomy schema'
 	@echo '  mypy         - Run mypy type checking (selective strictness for metrics helpers)'
+	@echo '  type-check   - Run mypy type checking with baseline (new comprehensive approach)'
+	@echo '  type-baseline - Generate mypy baseline report (mypy-baseline.txt)'
+	@echo '  pre-commit-install - Install pre-commit hooks'
+	@echo '  pre-commit-run     - Run pre-commit on all files'
+	@echo '  pre-commit-update  - Update pre-commit hook versions'
+	@echo '  format       - Run code formatting (black + ruff format)'
+	@echo '  lint         - Run code linting (ruff + flake8)'
+	@echo '  quality      - Run both formatting and linting'
 	@echo '  benchmark-quantiles - Run quantile approximation benchmark (cache vs disabled)'
 	@echo '  aggregate-benchmarks - Aggregate quantile benchmark JSON artifacts into summary outputs'
 	@echo '  lint-docs    - Run markdownlint-cli2 on Markdown files (local convenience)'
 	@echo '  mypy-strict  - Run mypy in strict mode on core dashboard & config modules'
+	@echo '  pre-commit-install - Install pre-commit hooks'
+	@echo '  pre-commit-run     - Run pre-commit on all files'
+	@echo '  pre-commit-update  - Update pre-commit hook versions'
 
 up:
 	docker compose up -d
@@ -42,6 +57,12 @@ restart:
 
 logs:
 	docker compose logs -f gateway summary
+
+summary-run:
+	LOG_LEVEL=INFO JSON_LOGGING=true uvicorn $(SUMMARY_APP) --port $(SUMMARY_PORT)
+
+summary-smoke:
+	python scripts/smoke_auth.py --base http://localhost:$(SUMMARY_PORT) --user admin --password changeme || true
 
 prom-rules:
 	promtool check rules docker/prometheus_rules.yml
@@ -107,6 +128,13 @@ mypy:
 	@echo 'Type checking metrics helpers and any additional annotated utils...'
 	mypy tests/utils/metrics.py tests/utils/*.py scripts/benchmark_metrics_quantiles.py scripts/aggregate_quantile_benchmarks.py scripts/load_env.py
 	mypy scripts/prune_benchmark_artifacts.py
+
+# New comprehensive type checking with baseline approach
+type-check:
+	$(PY) scripts/type_check.py
+
+type-baseline:
+	$(PY) scripts/type_check.py --baseline
 
 .PHONY: mypy-strict
 mypy-strict:
@@ -210,3 +238,26 @@ gov-docker-build:
 
 gov-docker-run:
 	docker run -e WEBHOOK_SECRET=devsecret -p $(GOV_PORT):8081 governance-app:latest
+
+# --- Code Quality Targets ---
+.PHONY: format lint quality
+
+format:
+	$(PY) scripts/format.py
+
+lint:
+	$(PY) scripts/lint.py
+
+quality:
+	$(PY) scripts/quality.py
+
+# Pre-commit hooks management
+pre-commit-install:
+	pre-commit install --install-hooks
+	pre-commit install --hook-type pre-push
+
+pre-commit-run:
+	pre-commit run --all-files
+
+pre-commit-update:
+	pre-commit autoupdate

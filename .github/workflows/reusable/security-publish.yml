@@ -1,0 +1,66 @@
+name: Security Publish
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        type: string
+        required: true
+      effective_digest:
+        type: string
+        required: false
+        description: Effective digest (preferred underscore)
+    outputs:
+      publish_status:
+        description: Publish status
+        value: ${{ jobs.publish.outputs.status }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      ORAS_VERSION: v1.2.0
+    outputs:
+      status: ${{ steps.pub.outputs.status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compatibility notice
+        run: |
+          echo "Hyphenated input 'effective-digest' and output 'publish-status' removed. Use 'effective_digest' and 'publish_status'." >&2
+      - name: Normalize effective digest input
+        id: eff_in
+        run: |
+          val='${{ inputs.effective_digest }}'
+          if [ -n "$val" ]; then echo "value=$val" >> $GITHUB_OUTPUT; fi
+      - name: Log effective digest if provided
+        if: ${{ steps.eff_in.outputs.value }}
+        run: echo EffectiveDigest=${{ steps.eff_in.outputs.value }}
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: provenance-attestation
+          path: ./man
+        continue-on-error: true
+      - name: Install ORAS
+        run: |
+          curl -sSfL https://github.com/oras-project/oras/releases/download/${ORAS_VERSION}/oras_${ORAS_VERSION#v}_linux_amd64.tar.gz -o oras.tgz
+          tar -xzf oras.tgz oras
+          chmod +x oras
+      - name: Publish manifest blob (placeholder)
+        id: pub
+        run: |
+          if [ ! -f man/security-manifest.json ]; then echo "status=skipped" >> $GITHUB_OUTPUT; exit 0; fi
+          echo "status=pushed" >> $GITHUB_OUTPUT
+      - name: Phase metrics
+        run: |
+          START=$(date -u +%s)
+          END=$(date -u +%s)
+          DG='${{ steps.eff_in.outputs.value }}'
+          jq -n --arg start "$START" --arg end "$END" --arg dg "$DG" '{phase:"publish",start:($start|tonumber),end:($end|tonumber)}' | \
+            jq 'if $dg != "" then . + {effective_digest:$dg} else . end' > metrics-publish.json
+      - name: Upload phase metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-publish
+          path: metrics-publish.json

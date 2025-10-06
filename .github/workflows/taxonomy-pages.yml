@@ -1,0 +1,92 @@
+name: Publish Alert Taxonomy Pages
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'alerts_taxonomy.json'
+      - 'scripts/sync_alert_taxonomy.py'
+      - 'scripts/generate_taxonomy_metrics.py'
+      - '.github/workflows/taxonomy-pages.yml'
+  schedule:
+    - cron: '17 2 * * *'  # Daily 02:17 UTC publish to refresh badges even without changes
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for 30d churn)
+        uses: actions/checkout@v4
+        with:
+            fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-taxonomy.txt
+
+      - name: Generate taxonomy HTML
+        run: |
+          python scripts/sync_alert_taxonomy.py \
+            --taxonomy alerts_taxonomy.json \
+            --emit-html alerts_taxonomy.html
+
+      - name: Generate badges & metrics (30d churn, stability, runbook completeness)
+        env:
+          RISK_CHURN_SPIKE_THRESHOLD: 3.0
+          RISK_CHURN_SPIKE_FAIL: 0
+        run: |
+          python scripts/generate_taxonomy_metrics.py
+
+      - name: Prepare gh-pages content
+        run: |
+          mkdir public
+          cp alerts_taxonomy.html public/index.html
+          cp badge-taxonomy.json public/badge-taxonomy.json
+          cp badge-alerts-total.json public/badge-alerts-total.json
+          cp badge-alerts-deprecated.json public/badge-alerts-deprecated.json
+          cp badge-alerts-churn.json public/badge-alerts-churn.json
+          cp badge-alerts-stability.json public/badge-alerts-stability.json
+          cp badge-runbook-completeness.json public/badge-runbook-completeness.json
+          cp taxonomy-metrics.json public/taxonomy-metrics.json
+          cp badge-taxonomy-age.json public/badge-taxonomy-age.json
+          if [ -f badge-alerts-risk-churn.json ]; then cp badge-alerts-risk-churn.json public/badge-alerts-risk-churn.json; fi
+          if [ -f badge-alerts-risk-stability.json ]; then cp badge-alerts-risk-stability.json public/badge-alerts-risk-stability.json; fi
+          if [ -f taxonomy-metrics-history.json ]; then cp taxonomy-metrics-history.json public/taxonomy-metrics-history.json; fi
+          if [ -d metrics-history ]; then cp metrics-history/*.json public/ || true; fi
+          echo "<!DOCTYPE html><html><head><meta http-equiv=refresh content='0; url=alerts_taxonomy.html'></head><body></body></html>" > public/redirect.html
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: public
+          force_orphan: true
+
+      - name: Smoke test published endpoints
+        run: |
+          set -e
+          base="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gh-pages"
+          files="badge-taxonomy.json badge-alerts-total.json badge-alerts-deprecated.json badge-taxonomy-age.json badge-alerts-churn.json badge-alerts-stability.json badge-runbook-completeness.json badge-alerts-risk-churn.json badge-alerts-risk-stability.json taxonomy-metrics.json taxonomy-metrics-history.json index.html"
+          for f in $files; do
+            echo "Checking $f";
+            for i in 1 2 3 4 5; do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "$base/$f" || true)
+              if [ "$status" = "200" ]; then echo "OK: $f"; break; fi
+              echo "Attempt $i failed (status=$status); sleeping 2s"; sleep 2;
+            done
+          done

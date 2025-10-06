@@ -1,0 +1,201 @@
+name: Pin Multiple Base Images
+
+on:
+    schedule:
+        - cron: "23 4 * * 1" # Weekly Monday 04:23 UTC
+    workflow_dispatch:
+        inputs:
+            dockerfiles_json:
+                description: "JSON array of Dockerfile paths to pin; empty => auto-discover all *Dockerfile*"
+                required: false
+            branch:
+                description: "Branch to base the PR on"
+                required: false
+                default: "main"
+            force:
+                description: "Force re-pin even if already digest pinned"
+                required: false
+                default: "false"
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    enumerate:
+        runs-on: ubuntu-latest
+        outputs:
+            matrix: ${{ steps.collect.outputs.matrix }}
+        steps:
+            - name: Validate list & checkout / discover
+              id: collect
+              run: |
+                  set -e
+                  raw='${{ inputs.dockerfiles_json }}'
+                  if [ -z "$raw" ]; then
+                    echo 'No dockerfiles_json provided; auto-discovering...' >&2
+                    # Find Dockerfiles (case-sensitive) excluding common unwanted dirs
+                    find . -type f -name 'Dockerfile' -o -name '*Dockerfile*' | grep -vE '\.(git|github|venv|cache)' | sed 's|^./||' | sort -u > dockerfiles.txt || true
+                    if [ ! -s dockerfiles.txt ]; then echo 'No Dockerfiles discovered' >&2; exit 1; fi
+                    jq -R -s 'split("\n") | map(select(length>0))' dockerfiles.txt > discovered.json
+                    raw=$(cat discovered.json)
+                  else
+                    echo "$raw" | jq -e '.|type=="array"' >/dev/null 2>&1 || { echo 'dockerfiles_json must be JSON array' >&2; exit 1; }
+                    echo "$raw" | jq -r '.[]' > dockerfiles.txt
+                  fi
+                  jq -n --argjson arr $(echo "$raw") '{include:$arr}' > matrix.json
+                  echo "matrix={\"include\":$(cat matrix.json | jq -c '.include | map({dockerfile:.})')}" >> $GITHUB_OUTPUT
+                  echo "Dockerfiles:" >&2; cat dockerfiles.txt
+                  echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.branch }}
+            - name: Archive initial repo (for later patch aggregation)
+              run: |
+                  tar -czf repo-original.tgz .
+            - name: Upload base repo snapshot
+              uses: actions/upload-artifact@v4
+              with:
+                  name: pin-matrix-base-repo
+                  path: repo-original.tgz
+
+    pin_each:
+        needs: enumerate
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.enumerate.outputs.matrix) }}
+        outputs:
+            changes: ${{ steps.result.outputs.changed }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.branch }}
+            - name: Process Dockerfile (pin)
+              id: pin
+              run: |
+                  set -e
+                  DF="${{ matrix.dockerfile }}"
+                  [ -f "$DF" ] || { echo "Missing Dockerfile $DF" >&2; exit 1; }
+                  line=$(grep -i '^FROM ' "$DF" | head -n1)
+                  img=$(echo "$line" | awk '{print $2}')
+                  img=${img%% AS*}
+                  if [ -z "$img" ]; then echo "Could not parse base image in $DF" >&2; exit 1; fi
+                  if ! echo "$img" | grep -Eq '^[a-z0-9]+([._-][a-z0-9]+)*(\/[a-z0-9]+([._-][a-z0-9]+)*)*(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]{64})?$'; then
+                    echo "Image ref failed validation: $img" >&2; exit 1;
+                  fi
+                  already=$(echo "$img" | grep -c '@sha256:') || true
+                  if [ $already -gt 0 ] && [ '${{ inputs.force }}' != 'true' ]; then
+                    echo "already=true" >> $GITHUB_OUTPUT
+                    echo "changed=false" >> $GITHUB_OUTPUT
+                    echo "$DF: already pinned" >> pin-report.txt
+                    exit 0
+                  fi
+                  sudo apt-get update -y && sudo apt-get install -y skopeo jq >/dev/null
+                  repo=${img%:*}; tag=${img##*:}; if [ "$repo" = "$tag" ]; then tag=latest; fi
+                  out=$(skopeo inspect docker://$repo:$tag || true)
+                  digest=$(echo "$out" | jq -r '.Digest // empty')
+                  [ -z "$digest" ] && { echo "Failed to resolve digest for $img" >&2; exit 1; }
+                  pinned="$img@$digest"
+                  before_line=$(grep -i '^FROM ' "$DF" | head -n1)
+                  awk -v repl="$pinned" 'BEGIN{IGNORECASE=1} /^FROM / && !done {print "FROM " repl " # pinned for reproducible builds"; done=1; next} {print}' "$DF" > "$DF.new" && mv "$DF.new" "$DF"
+                  echo "Pinned $DF -> $pinned" >&2
+                  echo "digest=$digest" >> $GITHUB_OUTPUT
+                  echo "already=false" >> $GITHUB_OUTPUT
+                  echo "changed=true" >> $GITHUB_OUTPUT
+                  after_line=$(grep -i '^FROM ' "$DF" | head -n1)
+                  echo "$DF|$before_line|$after_line" >> pin-report.txt
+            - name: Upload changed Dockerfile artifact (if changed)
+              if: ${{ steps.pin.outputs.changed == 'true' }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: pin-changed-${{ matrix.dockerfile }}
+                  path: ${{ matrix.dockerfile }}
+            - name: Upload per-file report
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: pin-report-${{ matrix.dockerfile }}
+                  path: pin-report.txt
+            - name: Result outputs
+              id: result
+              run: |
+                  echo "changed=${{ steps.pin.outputs.changed || 'false' }}" >> $GITHUB_OUTPUT
+
+    aggregate_pr:
+        needs: [enumerate, pin_each]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.branch }}
+            - name: Download changed Dockerfile artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: changed-files
+            - name: Apply changes
+              id: apply
+              run: |
+                  set -e
+                  shopt -s globstar nullglob
+                  count=0
+                  for f in changed-files/**/Dockerfile*; do
+                    base=$(basename "$f")
+                    rel=${f#changed-files/}
+                    # artifact path includes original path; copy back preserving structure
+                    if [ -f "$f" ]; then
+                      dest=${rel#pin-changed-}
+                      mkdir -p "$(dirname "$dest")"
+                      cp "$f" "$dest"
+                      count=$((count+1))
+                    fi
+                  done
+                  echo "Modified Dockerfiles count: $count" >&2
+                  echo "count=$count" >> $GITHUB_OUTPUT
+                  if [ $count -eq 0 ]; then echo "no_changes=true" >> $GITHUB_OUTPUT; else echo "no_changes=false" >> $GITHUB_OUTPUT; fi
+            - name: Aggregate changelog
+              id: changelog
+              run: |
+                  set -e
+                  echo 'Base Image Pin Changelog' > CHANGELOG_PIN.md
+                  echo '' >> CHANGELOG_PIN.md
+                  echo '| Dockerfile | Before | After |' >> CHANGELOG_PIN.md
+                  echo '|-----------|--------|-------|' >> CHANGELOG_PIN.md
+                  # Collect all pin-report artifacts (downloaded earlier under changed-files)
+                  find changed-files -type f -name 'pin-report.txt' | while read -r rep; do
+                    while IFS='|' read -r file before after; do
+                      [ -z "$file" ] && continue
+                      if echo "$before" | grep -q '@sha256:' && echo "$after" | grep -q '@sha256:' && [ "$before" = "$after" ]; then
+                        : # unchanged pinned line
+                      fi
+                      # Escape pipe chars in output (minimal; assume FROM lines simple)
+                      echo "| $file | ${before//|/ } | ${after//|/ } |" >> CHANGELOG_PIN.md
+                    done < "$rep"
+                  done
+                  if ! grep -q '^| ' CHANGELOG_PIN.md; then echo '| _none_ | _ | _ |' >> CHANGELOG_PIN.md; fi
+                  echo "generated=true" >> $GITHUB_OUTPUT
+            - name: Create PR
+              if: ${{ steps.apply.outputs.no_changes != 'true' }}
+              uses: peter-evans/create-pull-request@v6
+              with:
+                  commit-message: "chore: pin multiple base image digests"
+                  branch: chore/pin-base-images
+                  title: "chore: pin multiple base image digests"
+                  body: |
+                      Automated digest pin across multiple Dockerfiles.
+                      Inputs: `${{ inputs.dockerfiles_json }}`
+
+                       Generated changelog:
+
+                       $(cat CHANGELOG_PIN.md)
+                  labels: security, supply-chain
+                  signoff: true
+            - name: Summary
+              run: |
+                  echo "### Multi-image Pin Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "Dockerfiles input: ${{ inputs.dockerfiles_json }}" >> $GITHUB_STEP_SUMMARY
+                  echo "Changed files count: ${{ steps.apply.outputs.count || '0' }}" >> $GITHUB_STEP_SUMMARY
+                  if [ -f CHANGELOG_PIN.md ]; then
+                    echo "\n#### Changelog" >> $GITHUB_STEP_SUMMARY
+                    cat CHANGELOG_PIN.md >> $GITHUB_STEP_SUMMARY
+                  fi

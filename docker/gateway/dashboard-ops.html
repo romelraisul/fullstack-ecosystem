@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Unified Operations Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+        }
+
+        body {
+            font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: 22px;
+        }
+
+        .h2 {
+            margin: 0 0 8px;
+            font-size: 18px;
+        }
+
+        .header-bar {
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        }
+
+        section {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .small {
+            font-size: 12px;
+            opacity: .75;
+        }
+
+        .flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .bad {
+            color: #842029;
+            font-weight: 600;
+        }
+
+        .ok {
+            color: #0f5132;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        th,
+        td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        td.latency.low {
+            background: #e6f4ea;
+        }
+
+        td.latency.med {
+            background: #fff4ce;
+        }
+
+        td.latency.high {
+            background: #fde7e9;
+        }
+
+        td.latency.na {
+            background: #f2f2f2;
+            color: #666;
+        }
+
+        canvas.spark {
+            width: 100px;
+            height: 28px;
+            display: block;
+        }
+
+        .spark-wrap {
+            width: 110px;
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        iframe {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .panels {
+            display: grid;
+            gap: 12px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        button {
+            cursor: pointer;
+            border: 1px solid #ccc;
+            background: #fff;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        button:hover {
+            background: #f6f8fa;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+            background: #bbb;
+        }
+
+        .status-up {
+            background: #2da44e;
+        }
+
+        .status-down {
+            background: #cf222e;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+            font-size: 12px;
+        }
+
+        .wide {
+            grid-column: 1 / -1;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="flex header-bar">
+        <div>
+            <h1>Unified Operations Dashboard</h1>
+            <div class="small">Edge + API + Alerts + Agents snapshot (auto-refreshing)</div>
+        </div>
+        <div class="flex">
+            <button id="refresh-now">Manual Refresh</button>
+            <label class="small">Interval:
+                <select id="interval">
+                    <option value="15000">15s</option>
+                    <option value="30000" selected>30s</option>
+                    <option value="60000">60s</option>
+                    <option value="120000">2m</option>
+                </select>
+            </label>
+            <label class="small">Latency View:
+                <select id="latency-view">
+                    <option value="both" selected>Both</option>
+                    <option value="browser">Browser-Sampled Only</option>
+                    <option value="server">Server-Sampled Only</option>
+                </select>
+            </label>
+        </div>
+    </header>
+
+    <section class="wide" id="health-section">
+        <h2 class="h2">Service Health</h2>
+        <table id="health-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Latency (ms)</th>
+                    <th>Trend</th>
+                    <th>Last Checked</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="small" id="health-updated">Initializing…</div>
+        <div class="small" id="alert-summary">Alerts: (loading)</div>
+    </section>
+
+    <section class="wide" id="latency-section">
+        <h2 class="h2">Backend Latency Samples (Server-Side)</h2>
+        <table id="latency-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Latest (ms)</th>
+                    <th>Min</th>
+                    <th>p50</th>
+                    <th>p90</th>
+                    <th>p99</th>
+                    <th>Max</th>
+                    <th>Failure %</th>
+                    <th>Trend</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="small" id="latency-updated">Initializing…</div>
+        <div class="small">Source: /api/service-latencies (15s sampler in API)</div>
+    </section>
+
+    <section class="wide">
+        <h2 class="h2">Key Grafana Dashboards</h2>
+        <div class="panels" id="grafana-panels">
+            <!-- Embedded dashboards (whole) -->
+            <div>
+                <div class="small mono">API Overview</div>
+                <iframe loading="lazy" src="/grafana/d/api-overview?orgId=1&refresh=30s&kiosk" height="480"
+                    title="API Overview"></iframe>
+            </div>
+            <div>
+                <div class="small mono">Alerts Overview</div>
+                <iframe loading="lazy" src="/grafana/d/alerts-overview?orgId=1&refresh=30s&kiosk" height="420"
+                    title="Alerts Overview"></iframe>
+            </div>
+            <div>
+                <div class="small mono">Agent Fleet</div>
+                <iframe loading="lazy" src="/grafana/d/agent_fleet?orgId=1&refresh=30s&kiosk" height="420"
+                    title="Agent Fleet"></iframe>
+            </div>
+        </div>
+        <div class="small">Embedded in kiosk mode. Open full Grafana: <a href="/grafana/" target="_blank">/grafana/</a>
+        </div>
+    </section>
+
+    <section class="wide">
+        <h2 class="h2">Quick Links</h2>
+        <div class="flex">
+            <a href="/" target="_blank" rel="noopener">Gateway</a>
+            <a href="/prometheus/" target="_blank" rel="noopener">Prometheus</a>
+            <a href="/alertmanager/" target="_blank" rel="noopener">Alertmanager</a>
+            <a href="/grafana/" target="_blank" rel="noopener">Grafana</a>
+            <a href="/dashboard-5099.html" target="_blank" rel="noopener">Enterprise Summary (5099)</a>
+            <a href="http://localhost:8010/metrics" target="_blank" rel="noopener">API Metrics</a>
+            <a href="http://localhost:8001/metrics" target="_blank" rel="noopener">Autogen Backend Metrics</a>
+            <a href="http://localhost:9101/metrics" target="_blank" rel="noopener">Node Exporter</a>
+            <a href="http://localhost:9090/prometheus/graph" target="_blank" rel="noopener">PromQL Explorer</a>
+        </div>
+    </section>
+
+    <script>
+        const SERVICES = [
+            { name: 'Gateway', url: 'http://localhost:5125/healthz', display: 'http://localhost:5125/' },
+            { name: 'API', url: 'http://localhost:8010/health', display: 'http://localhost:8010' },
+            { name: 'API Metrics', url: 'http://localhost:8010/metrics', display: 'http://localhost:8010/metrics', expectText: 'app_requests_total' },
+            { name: 'Prometheus', url: 'http://localhost:9090/prometheus/-/healthy', display: 'http://localhost:9090/prometheus' },
+            { name: 'Alertmanager', url: 'http://localhost:9094/alertmanager/-/healthy', display: 'http://localhost:9094/alertmanager' },
+            { name: 'Grafana', url: 'http://localhost:3030/api/health', display: 'http://localhost:3030' },
+            { name: 'Autogen Backend', url: 'http://localhost:8001/health', display: 'http://localhost:8001' },
+            { name: 'Autogen Metrics', url: 'http://localhost:8001/metrics', display: 'http://localhost:8001/metrics', expectText: 'http_requests_total' },
+            { name: 'Qdrant', url: 'http://localhost:6333/metrics', display: 'http://localhost:6333/dashboard' },
+            { name: 'Redis Exporter', url: 'http://localhost:9122/metrics', display: 'http://localhost:9122/metrics', expectText: 'redis_memory_used_bytes' },
+            { name: 'Postgres Exporter', url: 'http://localhost:9188/metrics', display: 'http://localhost:9188/metrics', expectText: 'pg_up' }
+        ];
+
+        const tbody = document.querySelector('#health-table tbody');
+        const latencyTbody = document.querySelector('#latency-table tbody');
+        const updated = document.getElementById('health-updated');
+        const latencyUpdated = document.getElementById('latency-updated');
+        const alertSummary = document.getElementById('alert-summary');
+        let timer = null;
+        const latencyHistory = {}; // serviceName -> array of last N latencies
+        const MAX_POINTS = 30;
+
+        function classifyLatency(ms) {
+            if (ms === '-' || ms === undefined) return 'na';
+            if (ms < 150) return 'low';
+            if (ms < 500) return 'med';
+            return 'high';
+        }
+
+        function pushLatency(name, val) {
+            if (!latencyHistory[name]) latencyHistory[name] = [];
+            if (typeof val === 'number') latencyHistory[name].push(val); else latencyHistory[name].push(null);
+            if (latencyHistory[name].length > MAX_POINTS) latencyHistory[name].shift();
+        }
+
+        function renderSpark(name) {
+            const points = latencyHistory[name] || [];
+            const valid = points.filter(p => typeof p === 'number');
+            if (!valid.length) return '<span class="small">n/a</span>';
+            const max = Math.max(...valid);
+            const min = Math.min(...valid);
+            const h = 20, w = 100;
+            // Build tiny SVG (lighter than canvas for static spark)
+            const scaleX = (i) => (i / (points.length - 1)) * w;
+            const scaleY = (v) => h - ((v - min) / (max - min || 1)) * h;
+            let d = '';
+            points.forEach((p, i) => {
+                if (typeof p !== 'number') return;
+                const x = scaleX(i).toFixed(1);
+                const y = scaleY(p).toFixed(1);
+                d += (d ? ' L' : 'M') + x + ' ' + y;
+            });
+            return `<svg width="110" height="24" viewBox="0 0 110 24" class="spark" aria-label="latency trend"><path d="${d}" fill="none" stroke="#0d6efd" stroke-width="1.5"/></svg>`;
+        }
+
+        async function checkService(svc) {
+            const start = performance.now();
+            try {
+                const ctrl = new AbortController();
+                const timeout = setTimeout(() => ctrl.abort(), 8000);
+                const res = await fetch(svc.url, { signal: ctrl.signal });
+                clearTimeout(timeout);
+                const latency = Math.round(performance.now() - start);
+                let ok = res.ok;
+                let text = '';
+                if (svc.expectText && ok) {
+                    text = await res.text();
+                    ok = text.includes(svc.expectText);
+                }
+                return { name: svc.name, url: svc.display, status: ok ? 'up' : 'degraded', latency, ok };
+            } catch (e) {
+                return { name: svc.name, url: svc.display, status: 'down', latency: '-', ok: false };
+            }
+        }
+
+        function renderRow(r) {
+            const cls = r.ok ? 'ok' : 'bad';
+            const dotClass = r.ok ? 'status-dot status-up' : 'status-dot status-down';
+            const latencyClass = 'latency ' + classifyLatency(r.latency);
+            const spark = renderSpark(r.name);
+            return `<tr><td><span class="${dotClass}"></span>${r.name}</td>` +
+                `<td><a href="${r.url}" target="_blank">${r.url}</a></td>` +
+                `<td class="${cls}">${r.status}</td>` +
+                `<td class="${latencyClass}">${r.latency}</td>` +
+                `<td class="spark-wrap">${spark}</td>` +
+                `<td>${new Date().toLocaleTimeString()}</td></tr>`;
+        }
+
+        async function fetchAlerts() {
+            try {
+                const res = await fetch('http://localhost:9094/api/v2/alerts');
+                if (!res.ok) throw new Error('bad');
+                const data = await res.json();
+                const firing = data.filter(a => a.status?.state === 'firing');
+                const bySeverity = {};
+                firing.forEach(a => { const sev = (a.labels?.severity) || 'unknown'; bySeverity[sev] = (bySeverity[sev] || 0) + 1; });
+                const parts = Object.entries(bySeverity).map(([k, v]) => `${k}:${v}`);
+                alertSummary.textContent = `Alerts firing: ${firing.length}` + (parts.length ? ` (${parts.join(', ')})` : '');
+            } catch (e) {
+                alertSummary.textContent = 'Alerts: unavailable';
+            }
+        }
+
+        async function refresh() {
+            const results = await Promise.all(SERVICES.map(checkService));
+            results.forEach(r => pushLatency(r.name, typeof r.latency === 'number' ? r.latency : null));
+            tbody.innerHTML = results.map(renderRow).join('');
+            updated.textContent = 'Last update: ' + new Date().toLocaleTimeString();
+            fetchAlerts();
+            refreshBackendLatencies();
+        }
+
+        function renderBackendSpark(samples) {
+            const vals = samples.filter(s => s.ok).map(s => s.ms);
+            if (!vals.length) return '<span class="small">n/a</span>';
+            const max = Math.max(...vals);
+            const min = Math.min(...vals);
+            const h = 20, w = 100;
+            const scaleX = (i) => (i / (vals.length - 1)) * w;
+            const scaleY = (v) => h - ((v - min) / (max - min || 1)) * h;
+            let d = '';
+            vals.forEach((v, i) => {
+                const x = scaleX(i).toFixed(1);
+                const y = scaleY(v).toFixed(1);
+                d += (d ? ' L' : 'M') + x + ' ' + y;
+            });
+            return `<svg width="110" height="24" viewBox="0 0 110 24" class="spark" aria-label="latency trend"><path d="${d}" fill="none" stroke="#6f42c1" stroke-width="1.5"/></svg>`;
+        }
+
+        function classifyBackend(latency) {
+            if (latency == null) return 'na';
+            if (latency <= 150) return 'low';
+            if (latency <= 400) return 'med';
+            return 'high';
+        }
+
+        async function refreshBackendLatencies() {
+            try {
+                const res = await fetch('http://localhost:8010/api/service-latencies?limit=40');
+                if (!res.ok) throw new Error('bad');
+                const data = await res.json();
+                const rows = (data.services || []).map(svc => {
+                    const st = svc.stats || {};
+                    const latest = st.latest_ms;
+                    const cls = 'latency ' + classifyBackend(latest);
+                    const trend = renderBackendSpark(svc.samples || []);
+                    return `<tr><td>${svc.name}</td>` +
+                        `<td class="${cls}">${latest ?? '-'}</td>` +
+                        `<td>${st.min_ms ?? '-'}</td>` +
+                        `<td>${st.p50_ms ?? '-'}</td>` +
+                        `<td>${st.p90_ms ?? '-'}</td>` +
+                        `<td>${st.p99_ms ?? '-'}</td>` +
+                        `<td>${st.max_ms ?? '-'}</td>` +
+                        `<td>${st.failure_rate_pct != null ? st.failure_rate_pct.toFixed(1) : '-'}</td>` +
+                        `<td class="spark-wrap">${trend}</td></tr>`;
+                });
+                latencyTbody.innerHTML = rows.join('');
+                latencyUpdated.textContent = 'Last update: ' + new Date().toLocaleTimeString();
+            } catch (e) {
+                latencyUpdated.textContent = 'Backend latency data unavailable';
+            }
+        }
+
+        function schedule() {
+            const interval = parseInt(document.getElementById('interval').value, 10);
+            if (timer) clearInterval(timer);
+            timer = setInterval(refresh, interval);
+        }
+
+        function applyLatencyView() {
+            const v = document.getElementById('latency-view').value;
+            const health = document.getElementById('health-section');
+            const backend = document.getElementById('latency-section');
+            if (v === 'both') {
+                health.classList.remove('hidden');
+                backend.classList.remove('hidden');
+            } else if (v === 'browser') {
+                health.classList.remove('hidden');
+                backend.classList.add('hidden');
+            } else if (v === 'server') {
+                backend.classList.remove('hidden');
+                health.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('refresh-now').addEventListener('click', refresh);
+        document.getElementById('interval').addEventListener('change', () => { schedule(); refresh(); });
+        document.getElementById('latency-view').addEventListener('change', applyLatencyView);
+
+        // initial
+        refresh();
+        schedule();
+        applyLatencyView();
+    </script>
+</body>
+
+</html>

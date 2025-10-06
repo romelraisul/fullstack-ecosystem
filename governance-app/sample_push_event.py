@@ -7,12 +7,14 @@ Usage (PowerShell):
 
 Adjust WORKFLOW_FILES or commit paths as needed.
 """
+
 from __future__ import annotations
-import os
-import json
-import hmac
+
 import hashlib
+import hmac
 import http.client
+import json
+import os
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "devsecret")
 PORT = int(os.getenv("GOV_APP_PORT", "8000"))
@@ -25,15 +27,9 @@ payload = {
     "repository": {
         "full_name": "local/test-repo",
         "owner": {"login": "local"},
-        "name": "test-repo"
+        "name": "test-repo",
     },
-    "commits": [
-        {
-            "id": "deadbeef",
-            "added": [".github/workflows/example.yml"],
-            "modified": []
-        }
-    ]
+    "commits": [{"id": "deadbeef", "added": [".github/workflows/example.yml"], "modified": []}],
 }
 
 body = json.dumps(payload).encode()
@@ -45,7 +41,7 @@ headers = {
     "X-GitHub-Event": "push",
     "X-Hub-Signature-256": signature,
     "Content-Type": "application/json",
-    "User-Agent": "governance-app-sim"
+    "User-Agent": "governance-app-sim",
 }
 conn.request("POST", "/webhook", body=body, headers=headers)
 resp = conn.getresponse()

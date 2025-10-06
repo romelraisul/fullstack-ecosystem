@@ -1,0 +1,891 @@
+services:
+  api:
+    # Pre-built image tag used in CI to avoid rebuilding per matrix job.
+    # docker build job will tag the image as ecosystem_api_local:latest and save/load via artifact.
+    image: ecosystem_api_local:latest
+    build: ./backend
+    container_name: ecosystem_api
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    environment:
+      - UVICORN_WORKERS=8
+      - QCAE_BASE=http://qcae:5106
+      - QDC_BASE=http://quantum_deployment_center:5065
+      - QCMS_BASE=http://quantum_consciousness_merger:5081
+      - QCC_BASE=http://quantum_computing_center:5053
+      - GATEWAY_BASE=http://gateway
+      - API_INTERNAL_BASE=http://api:8000
+      - ASSUME_HEALTH_READY=false
+    # Load shared secrets (POSTGRES_PASSWORD, REDIS_PASSWORD, etc.) if api needs to talk to autogen stack locally.
+    env_file:
+      - ./autogen/.env
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').getcode()==200 else 1)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks: ["net"]
+  web:
+    build: ./frontend
+    container_name: ecosystem_web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks: ["net"]
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ecosystem_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--web.enable-lifecycle",
+        "--web.enable-admin-api",
+        "--web.external-url=http://localhost:5125/prometheus",
+        "--web.route-prefix=/prometheus",
+      ]
+    networks: ["net"]
+    depends_on:
+      - alertmanager
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:9090/prometheus/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ecosystem_grafana
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    volumes:
+      - ./docker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/dashboards:/etc/grafana/custom-dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks: ["net"]
+    env_file:
+      - ./docker/grafana/grafana.env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ecosystem_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9094:9093"
+    volumes:
+      - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: ["net"]
+    command:
+      [
+        "--config.file=/etc/alertmanager/alertmanager.yml",
+        "--storage.path=/alertmanager",
+        "--web.external-url=http://localhost:5125/alertmanager/",
+        "--web.route-prefix=/alertmanager",
+      ]
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:9093/alertmanager/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  msteams:
+    image: quay.io/prometheusmsteams/prometheus-msteams:latest
+    container_name: ecosystem_msteams
+    restart: unless-stopped
+    environment:
+      - TEAMS_INCOMING_WEBHOOK_URL=http://api:8000/_teams-sink
+      - TEAMS_REQUEST_URI=alertmanager
+    ports:
+      - "2000:2000"
+    networks: ["net"]
+  quantum_computing_center:
+    # Narrow build context to this repository root instead of parent home directory to reduce build time & unintended file inclusion.
+    build:
+      context: .
+      dockerfile: ./docker/quantum/Dockerfile.qcc
+    container_name: quantum_computing_center
+    restart: unless-stopped
+    ports:
+      - "5053:5053"
+    networks: ["net"]
+  quantum_consciousness_merger:
+    build:
+      context: .
+      dockerfile: ./docker/quantum/Dockerfile.qcms
+    container_name: quantum_consciousness_merger
+    restart: unless-stopped
+    ports:
+      - "5081:5081"
+    networks: ["net"]
+  quantum_deployment_center:
+    build:
+      context: .
+      dockerfile: ./docker/quantum/Dockerfile.qdc
+    container_name: quantum_deployment_center
+    restart: unless-stopped
+    ports:
+      - "5065:5065"
+    networks: ["net"]
+  quantum_index:
+    image: nginx:alpine
+    container_name: quantum_index
+    restart: unless-stopped
+    ports:
+      - "5088:80"
+    volumes:
+      - ./quantum/index:/usr/share/nginx/html:ro
+    networks: ["net"]
+  qcae:
+    build:
+      context: .
+      dockerfile: ./docker/quantum/Dockerfile.qcae
+    container_name: quantum_cae
+    restart: unless-stopped
+    ports:
+      - "5106:5106"
+    environment:
+      - QCAE_MAX_SHOTS=10000
+      - QCAE_MAX_OPS=256
+      - QCAE_MAX_QUBITS=16
+    volumes:
+      # This host file exists at c:/Users/romel/quantum_computing_acceleration_enhanced.py; mount relative to repo root with absolute path if portability needed.
+      - ../quantum_computing_acceleration_enhanced.py:/app/quantum_computing_acceleration_enhanced.py:ro
+    networks: ["net"]
+  gateway:
+    image: nginx:alpine
+    container_name: ecosystem_gateway
+    restart: unless-stopped
+    ports:
+      - "5125:80"
+      - "8445:443" # remapped from 8444 to avoid local collision
+    volumes:
+      - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/gateway/certs:/etc/nginx/certs:ro
+      - ./docker/gateway/index.html:/usr/share/nginx/html/index.html:ro
+      - ./docker/gateway/systems.html:/usr/share/nginx/html/systems.html:ro
+      - ./docker/gateway/dashboard-5099.html:/usr/share/nginx/html/dashboard-5099.html:ro
+      - ./docker/gateway/dashboard-ops.html:/usr/share/nginx/html/dashboard-ops.html:ro
+      # removed htpasswd mount
+    networks: ["net"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  autogen-postgres:
+    image: postgres:15-alpine
+    container_name: autogen-postgres
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-autogen_agents}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - autogen-postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-autogen_agents}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-redis:
+    image: redis:7-alpine
+    container_name: autogen-redis
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - autogen-redis_data:/data
+    ports:
+      - "6380:6379" # Changed port to avoid conflict
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "PING"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-qdrant:
+    image: qdrant/qdrant@sha256:6ac4807063bbecddca0250bfbcff52acf18c22263b904d12919349e6d0a408f1
+    container_name: autogen-qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    volumes:
+      - autogen-qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    healthcheck:
+      disable: true
+    networks:
+      - net
+
+  autogen-ollama:
+    image: ollama/ollama@sha256:a5409cb903d30f9cd67e9f430dd336ddc9274e16fd78f75b675c42065991b4fd
+    container_name: autogen-ollama
+    restart: unless-stopped
+    volumes:
+      - autogen-ollama_data:/root/.ollama
+    ports:
+      - "11435:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  autogen-ollama-init:
+    image: curlimages/curl:8.10.1
+    container_name: autogen-ollama-init
+    restart: "no"
+    depends_on:
+      autogen-ollama:
+        condition: service_healthy
+    env_file:
+      - ./autogen/.env
+    environment:
+      OLLAMA_MODELS: "${OLLAMA_MODELS:-llama3.2,codellama,mistral,gptoss20b}"
+    entrypoint: ["sh", "-lc"]
+    command: >-
+      echo "Waiting for Ollama API..." ;
+      for i in $(seq 1 120); do curl -sf http://autogen-ollama:11434/api/tags && break; sleep 2; done ;
+      echo "Ollama is up. Pre-pulling models: $OLLAMA_MODELS" ;
+      for m in $(echo "$OLLAMA_MODELS" | tr ',' ' ') ; do
+        echo "Pulling $${m}" ;
+        curl -s -N -X POST -H 'Content-Type: application/json' -d '{"name":"'"$${m}"'"}' http://autogen-ollama:11434/api/pull >/dev/null || true ;
+        echo "Warming $${m}" ;
+        curl -s -X POST -H 'Content-Type: application/json' -d '{"model":"'"$${m}"'" ,"prompt":"hello","stream":false}' http://autogen-ollama:11434/api/generate >/dev/null || true ;
+      done ;
+      echo "ollama-init done"
+    networks:
+      - net
+
+  autogen-backend:
+    build:
+      context: ./autogen
+      dockerfile: backend/Dockerfile.fast
+    container_name: autogen-backend
+    restart: unless-stopped
+    command:
+      [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--workers",
+        "4",
+      ]
+    env_file:
+      - ./autogen/.env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@autogen-postgres:5432/${POSTGRES_DB:-autogen_agents}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@autogen-redis:6379/0"
+      QDRANT_URL: "http://autogen-qdrant:6333"
+      OLLAMA_BASE_URL: "http://autogen-ollama:11434"
+    volumes:
+      - ./autogen/backend/uploads:/app/uploads
+      - ./autogen/backend/logs:/app/logs
+    ports:
+      - "8001:8000"
+    depends_on:
+      autogen-postgres:
+        condition: service_healthy
+      autogen-redis:
+        condition: service_healthy
+      autogen-qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-frontend:
+    build:
+      context: ./autogen
+      dockerfile: frontend/Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: "${BACKEND_URL:-http://localhost:8000}"
+    container_name: autogen-frontend
+    restart: unless-stopped
+    depends_on:
+      autogen-backend:
+        condition: service_healthy
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  autogen-nginx:
+    image: nginx:1.27-alpine
+    container_name: autogen-nginx
+    restart: unless-stopped
+    volumes:
+      - ./autogen/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./autogen/nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "8081:80" # Changed port to avoid conflict
+      - "444:443" # Changed port to avoid conflict
+    depends_on:
+      autogen-frontend:
+        condition: service_healthy
+      autogen-backend:
+        condition: service_healthy
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/ >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    read_only: true
+
+  qa-smoke:
+    build:
+      context: .
+      dockerfile: Dockerfile.smoke
+    container_name: qa_smoke
+    command: ["python", "scripts/smoke_test.py"]
+    environment:
+      - TARGETS=http://api:8000/health;http://prometheus:9090/-/ready
+    depends_on:
+      - api
+      - prometheus
+    networks: ["net"]
+    profiles: ["qa"]
+
+  qa-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: qa_orchestrator
+    command:
+      - python
+      - scripts/orchestrator.py
+      - --process
+      - 'noop:python -c ''print("ok")'''
+    networks: ["net"]
+    profiles: ["qa"]
+
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  autogen-node-exporter:
+    image: prom/node-exporter@sha256:d00a542e409ee618a4edc67da14dd48c5da66726bbd5537ab2af9c1dfc442c8a
+    container_name: autogen-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9101:9100" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-nginx-exporter:
+    image: nginx/nginx-prometheus-exporter@sha256:6edfb73afd11f2d83ea4e8007f5068c3ffaa38078a6b0ad1339e5bd2f637aacd
+    container_name: autogen-nginx-exporter
+    restart: unless-stopped
+    command:
+      - "-nginx.scrape-uri=http://autogen-nginx:8080/stub_status"
+    depends_on:
+      - autogen-nginx
+    ports:
+      - "9114:9113" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-agent-worker:
+    build:
+      context: ./autogen
+      dockerfile: backend/Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@autogen-postgres:5432/${POSTGRES_DB:-autogen_agents}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@autogen-redis:6379/0"
+      QDRANT_URL: "http://autogen-qdrant:6333"
+      OLLAMA_BASE_URL: "http://autogen-ollama:11434"
+    volumes:
+      - ./autogen/backend/uploads:/app/uploads
+      - ./autogen/backend/logs:/app/logs
+    depends_on:
+      autogen-postgres:
+        condition: service_healthy
+      autogen-redis:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  autogen-prometheus:
+    image: prom/prometheus@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+    container_name: autogen-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./autogen/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./autogen/monitoring/rules:/etc/prometheus/rules:ro
+      - "./autogen/monitoring/rules/${PROM_RULES_PROFILE:-dev}:/etc/prometheus/rules-profile:ro"
+      - autogen-prometheus_data:/prometheus
+    ports:
+      - "9092:9090" # Changed port to avoid conflict
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=200h"
+      - "--web.enable-lifecycle"
+    env_file:
+      - ./autogen/.env
+    networks:
+      - net
+
+  autogen-alertmanager:
+    image: prom/alertmanager@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    container_name: autogen-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./autogen/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "9095:9093" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-grafana:
+    image: grafana/grafana@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d
+    container_name: autogen-grafana
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - autogen-grafana_data:/var/lib/grafana
+      - ./autogen/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./autogen/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3001:3000"
+    depends_on:
+      - autogen-prometheus
+    networks:
+      - net
+
+  autogen-llm-metrics-seeder:
+    image: curlimages/curl:8.10.1
+    container_name: autogen-llm-metrics-seeder
+    restart: unless-stopped
+    depends_on:
+      autogen-backend:
+        condition: service_healthy
+    entrypoint: ["sh", "-lc"]
+    command: >-
+      echo "Seeding LLM chat metrics..." ;
+      while true; do
+        curl -s -m 10 -H 'Content-Type: application/json' -d '{"message":"healthcheck ping","agent_ids":["project_management_agent"],"conversation_type":"single_agent"}' http://autogen-backend:8000/api/v1/chat >/dev/null || true ;
+        sleep 20 ;
+      done
+    networks:
+      - net
+
+  autogen-worker-metrics-seeder:
+    image: curlimages/curl:8.10.1
+    container_name: autogen-worker-metrics-seeder
+    restart: unless-stopped
+    depends_on:
+      autogen-backend:
+        condition: service_healthy
+      autogen-agent-worker:
+        condition: service_started
+    entrypoint: ["sh", "-lc"]
+    command: >-
+      echo "Seeding Celery worker metrics..." ;
+      while true; do
+        # Enqueue a trivial ping task; ignore failures to keep loop alive
+        curl -s -m 10 http://autogen-backend:8000/api/v1/workers/health >/dev/null || true ;
+        sleep 30 ;
+      done
+    networks:
+      - net
+
+  autogen-academic-research-platform:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-academic-research
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: agents.academic_research_platform
+    ports:
+      - "5121:8000"
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request,sys; urllib.request.urlopen("http://localhost:8000/health"); print("ok")''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-developer-ecosystem-engine:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-developer-ecosystem
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: agents.developer_ecosystem_aggregation_engine
+    ports:
+      - "5122:8000"
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request,sys; urllib.request.urlopen("http://localhost:8000/health"); print("ok")''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-web-security-knowledge-platform:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-web-security
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: agents.web_security_knowledge_platform
+    ports:
+      - "5110:8000"
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request,sys; urllib.request.urlopen("http://localhost:8000/health"); print("ok")''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-awesome-topics-discovery-engine:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-awesome-topics
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: agents.awesome_topics_discovery_engine
+    ports:
+      - "5123:8000"
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request,sys; urllib.request.urlopen("http://localhost:8000/health"); print("ok")''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-ultimate-enterprise-summary:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-ultimate-summary
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: ultimate_enterprise_summary
+    ports:
+      - "5099:8000"
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request,sys; urllib.request.urlopen("http://localhost:8000/api/health"); print("ok")''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - net
+
+  autogen-elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: autogen-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - autogen-elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9201:9200" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-kibana:
+    image: kibana:8.11.0
+    container_name: autogen-kibana
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: "http://autogen-elasticsearch:9200"
+    ports:
+      - "5602:5601" # Changed port to avoid conflict
+    depends_on:
+      - autogen-elasticsearch
+    networks:
+      - net
+
+  autogen-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: autogen-rabbitmq
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-password}
+    volumes:
+      - autogen-rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5673:5672" # Changed port to avoid conflict
+      - "15673:15672" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    container_name: autogen-postgres-exporter
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@autogen-postgres:5432/${POSTGRES_DB:-autogen_agents}?sslmode=disable"
+    depends_on:
+      autogen-postgres:
+        condition: service_healthy
+    ports:
+      - "9188:9187" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-redis-exporter:
+    image: oliver006/redis_exporter@sha256:4c8000eb3525e0f6ed1327499861e272fcce358a9e7a87dd9db74c44607e6d8e
+    container_name: autogen-redis-exporter
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      REDIS_ADDR: "redis://autogen-redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    depends_on:
+      autogen-redis:
+        condition: service_healthy
+    ports:
+      - "9122:9121" # Changed port to avoid conflict
+    networks:
+      - net
+
+  autogen-agent-init:
+    image: curlimages/curl:8.10.1
+    container_name: autogen-agent-init
+    restart: "no"
+    depends_on:
+      autogen-backend:
+        condition: service_healthy
+      autogen-ollama-init:
+        condition: service_completed_successfully
+    entrypoint: ["sh", "-lc"]
+    command: >-
+      for i in $(seq 1 60); do curl -sf http://autogen-backend:8000/health && break; sleep 2; done ;
+      echo "Ensuring default agents..." ;
+      curl -s -X POST -H 'Content-Type: application/json' -d '{"agent_ids":["project_management_agent","ai_research_agent","code_generation_agent","business_plan_agent","market_research_agent"]}' http://autogen-backend:8000/api/v1/agents/instances/ensure || true ;
+      echo "Triggering warm-up chat..." ;
+      curl -s -X POST -H 'Content-Type: application/json' -d '{"message":"warm up","agent_ids":["project_management_agent","code_generation_agent"],"conversation_type":"multi_agent"}' http://autogen-backend:8000/api/v1/chat >/dev/null || true ;
+      echo "agent-init done"
+    networks:
+      - net
+
+  autogen-agent-traffic-seeder:
+    build:
+      context: ./autogen
+      dockerfile: ./Dockerfile.agent-base
+    container_name: autogen-agent-traffic-seeder
+    restart: unless-stopped
+    env_file:
+      - ./autogen/.env
+    environment:
+      AGENT_MODULE: agent_traffic_seeder
+      SEED_INTERVAL_SECONDS: 60
+    depends_on:
+      autogen-ultimate-enterprise-summary:
+        condition: service_healthy
+    volumes:
+      - ./autogen/agents/agent_registry.json:/app/agents/agent_registry.json:ro
+    networks:
+      - net
+
+  academic-research-container:
+    build:
+      context: .
+      dockerfile: autogen/agents/Dockerfile.academic
+    container_name: academic-research-container
+    restart: unless-stopped
+    ports:
+      - "55121:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - net
+
+  advanced-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: advanced-backend
+    restart: unless-stopped
+    environment:
+      APP_MODULE: autogen.advanced_backend:app
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 8000
+      UVICORN_WORKERS: 2
+      LOG_LEVEL: info
+    ports:
+      - "8011:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - net
+
+networks:
+  net:
+    driver: bridge
+volumes:
+  prometheus-data:
+  grafana-data:
+  autogen-postgres_data:
+    driver: local
+  autogen-redis_data:
+    driver: local
+  autogen-qdrant_data:
+    driver: local
+  autogen-ollama_data:
+    driver: local
+  autogen-prometheus_data:
+    driver: local
+  autogen-grafana_data:
+    driver: local
+  autogen-elasticsearch_data:
+    driver: local
+  autogen-rabbitmq_data:
+    driver: local
