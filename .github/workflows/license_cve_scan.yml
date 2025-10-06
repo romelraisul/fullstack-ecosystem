@@ -1,4 +1,4 @@
-name: Enhanced License and CVE Security Scan
+﻿name: Enhanced License and CVE Security Scan
 
 on:
     schedule:
@@ -6,17 +6,7 @@ on:
         - cron: "0 15 * * *"
     workflow_dispatch:
         inputs:
-            severi                       # npm audit (frontend)
-                  if [ -f frontend/package.json ]; then
-                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > ../build-reports/npm_audit_frontend_ubuntu.json
-                  else
-                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
-                  fi       # npm audit (frontend)
-                  if [ -f frontend/package.json ]; then
-                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
-                  else
-                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
-                  fieshold:
+            severity_threshold:
                 description: "Minimum severity to alert on (medium, high, critical)"
                 required: false
                 default: "high"
@@ -207,9 +197,26 @@ jobs:
                   name: license-cve-scan-reports-ubuntu
                   path: build-reports/**
 
+    codeql:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Initialize CodeQL
+              uses: github/codeql-action/init@v3
+              with:
+                  languages: python,javascript
+
+            - name: Autobuild
+              uses: github/codeql-action/autobuild@v3
+
+            - name: Perform CodeQL Analysis
+              uses: github/codeql-action/analyze@v3
+
     notify-security-team:
         runs-on: ubuntu-latest
-        needs: [scan-windows, scan-ubuntu]
+        needs: [scan-windows, scan-ubuntu, codeql]
         if: always()
         steps:
             - name: Download vulnerability reports
@@ -302,11 +309,11 @@ jobs:
 
             - name: Create security summary markdown
               run: |
-                  echo "# 🔒 Security Scan Summary" > security_summary.md
+                  echo "#  Security Scan Summary" > security_summary.md
                   echo "" >> security_summary.md
                   echo "**Repository:** ${{ github.repository }}" >> security_summary.md
                   echo "**Branch:** ${{ github.ref_name }}" >> security_summary.md
-                  echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
+                  echo "**Scan Date:** 2025-10-06 13:11:47 UTC" >> security_summary.md
                   echo "" >> security_summary.md
                   echo "### Results" >> security_summary.md
                   cat reports/summary/summary.json | jq -r 'to_entries[] | "- **\(.key)\**: \(.value)"' >> security_summary.md || true
@@ -322,11 +329,11 @@ jobs:
                       const issue = await github.rest.issues.create({
                           owner: context.repo.owner,
                           repo: context.repo.repo,
-                          title: `🚨 Security Alert: Vulnerabilities detected (Run #${{ github.run_number }})`,
+                          title:  Security Alert: Vulnerabilities detected (Run #${{ github.run_number }}),
                           body: summary,
                           labels: ['security','vulnerability']
                       });
-                      console.log(`Created security issue: ${issue.data.html_url}`);
+                      console.log(Created security issue: ${issue.data.html_url});
 
             - name: Send Slack notification
               if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
@@ -335,24 +342,24 @@ jobs:
                   status: custom
                   custom_payload: |
                       {
-                          text: "🚨 Security Vulnerabilities Detected",
+                          text: " Security Vulnerabilities Detected",
                           attachments: [{
                               color: "danger",
                               fields: [{
                                   title: "Repository",
-                                  value: "${{ github.repository }}",
+                                  value: ${{ github.repository }},
                                   short: true
                               }, {
                                   title: "Branch",
-                                  value: "${{ github.ref_name }}",
+                                  value: ${{ github.ref_name }},
                                   short: true
                               }, {
                                   title: "Threshold",
-                                  value: "${{ env.SEVERITY_THRESHOLD }}",
+                                  value: ${{ env.SEVERITY_THRESHOLD }},
                                   short: true
                               }, {
                                   title: "Run",
-                                  value: "${{ github.run_number }}",
+                                  value: ${{ github.run_number }},
                                   short: true
                               }]
                           }]
@@ -370,7 +377,7 @@ jobs:
                   password: ${{ secrets.MAIL_PASSWORD }}
                   to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
                   from: ${{ secrets.MAIL_USERNAME }}
-                  subject: "🚨 Security Alert: Vulnerabilities detected in ${{ github.repository }}"
+                  subject: " Security Alert: Vulnerabilities detected in ${{ github.repository }}"
                   body: file://security_summary.md
                   html_body: |
                       <pre>${{ steps.aggregate.outputs }}</pre>
