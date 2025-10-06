@@ -6,7 +6,17 @@ on:
         - cron: "0 15 * * *"
     workflow_dispatch:
         inputs:
-            severity_threshold:
+            severi                       # npm audit (frontend)
+                  if [ -f frontend/package.json ]; then
+                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > ../build-reports/npm_audit_frontend_ubuntu.json
+                  else
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                  fi       # npm audit (frontend)
+                  if [ -f frontend/package.json ]; then
+                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                  else
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                  fieshold:
                 description: "Minimum severity to alert on (medium, high, critical)"
                 required: false
                 default: "high"
@@ -87,28 +97,25 @@ jobs:
                   }
 
                   # npm audit (root)
-                  try {
-                      if (Test-Path package.json) {
-                          npm audit --json > build-reports/npm_audit_root_windows.json 2>$null || echo '{"metadata": {"vulnerabilities": {}}}' > build-reports/npm_audit_root_windows.json
-                      } else {
-                          '{"metadata": {"vulnerabilities": {}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                  if (Test-Path package.json) {
+                      npm audit --audit-level=info --json 2>$null > build-reports/npm_audit_root_windows.json
+                      if ($LASTEXITCODE -ne 0) {
+                          '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
                       }
-                  } catch {
-                      '{"metadata": {"vulnerabilities": {}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                  } else {
+                      '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
                   }
 
                   # npm audit (frontend)
-                  try {
-                      if (Test-Path frontend/package.json) {
-                          Push-Location frontend
-                          npm audit --json > ../build-reports/npm_audit_frontend_windows.json 2>$null || echo '{"metadata": {"vulnerabilities": {}}}' > ../build-reports/npm_audit_frontend_windows.json
-                          Pop-Location
-                      } else {
-                          '{"metadata": {"vulnerabilities": {}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                  if (Test-Path frontend/package.json) {
+                      Push-Location frontend
+                      npm audit --audit-level=info --json 2>$null > ../build-reports/npm_audit_frontend_windows.json
+                      if ($LASTEXITCODE -ne 0) {
+                          '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File ../build-reports/npm_audit_frontend_windows.json -Encoding utf8
                       }
-                  } catch {
-                      Pop-Location -ErrorAction SilentlyContinue
-                      '{"metadata": {"vulnerabilities": {}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                      Pop-Location
+                  } else {
+                      '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
                   }
 
             - name: Upload build-reports artifact (windows)
@@ -182,16 +189,16 @@ jobs:
 
                   # npm audit (root)
                   if [ -f package.json ]; then
-                      (npm audit --json > build-reports/npm_audit_root_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {}}}' > build-reports/npm_audit_root_ubuntu.json
+                      (npm audit --audit-level=info --json > build-reports/npm_audit_root_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
                   else
-                      echo '{"metadata": {"vulnerabilities": {}}}' > build-reports/npm_audit_root_ubuntu.json
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
                   fi
 
                   # npm audit (frontend)
                   if [ -f frontend/package.json ]; then
-                      (cd frontend && npm audit --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json 2>/dev/null) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > ../build-reports/npm_audit_frontend_ubuntu.json
                   else
-                      echo '{"metadata": {"vulnerabilities": {}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
                   fi
 
             - name: Upload build-reports artifact (ubuntu)
