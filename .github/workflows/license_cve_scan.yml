@@ -78,6 +78,34 @@ jobs:
                         '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
                     }
 
+                    # npm audit (root)
+                    if (Test-Path "package.json") {
+                        try {
+                            Push-Location .
+                            npm audit --audit-level=info --json > build-reports/npm_audit_root_windows.json
+                        } catch {
+                            '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                        } finally {
+                            Pop-Location
+                        }
+                    } else {
+                        '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                    }
+
+                    # npm audit (frontend)
+                    if (Test-Path "frontend/package.json") {
+                        try {
+                            Push-Location frontend
+                            npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_windows.json
+                        } catch {
+                            '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                        } finally {
+                            Pop-Location
+                        }
+                    } else {
+                        '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                    }
+
             - name: Upload build-reports artifact (windows)
               uses: actions/upload-artifact@v4
               with:
@@ -139,6 +167,28 @@ jobs:
                         echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
                     fi
 
+                    # semgrep
+                    python -m pip install semgrep -q || true
+                    if command -v semgrep >/dev/null 2>&1; then
+                        semgrep --config=auto --json --output=build-reports/semgrep_report_ubuntu.json . || echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
+                    else
+                        echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
+                    fi
+
+                    # npm audit (root)
+                    if [ -f "package.json" ]; then
+                        (cd . && npm audit --audit-level=info --json > build-reports/npm_audit_root_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
+                    else
+                        echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
+                    fi
+
+                    # npm audit (frontend)
+                    if [ -f "frontend/package.json" ]; then
+                        (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                    else
+                        echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                    fi
+
             - name: Upload build-reports artifact (ubuntu)
               uses: actions/upload-artifact@v4
               with:
@@ -195,6 +245,19 @@ jobs:
                                                     total['high'] += 1
                                             elif sev == 'medium':
                                                     total['medium'] += 1
+
+                            # semgrep results with severity mapping
+                            if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
+                                    for r in d['results']:
+                                            # Check if this is a semgrep result (has 'extra' field)
+                                            extra = r.get('extra', {})
+                                            if extra and isinstance(extra, dict):
+                                                    sev = (extra.get('severity') or '').lower()
+                                                    # Map semgrep severities: error->high, warning->medium
+                                                    if sev == 'error':
+                                                            total['high'] += 1
+                                                    elif sev == 'warning':
+                                                            total['medium'] += 1
 
                     os.makedirs('reports/summary', exist_ok=True)
                     with open('reports/summary/summary.json','w') as f:
