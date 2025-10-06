@@ -337,7 +337,7 @@ jobs:
 
             - name: Send email notification
               if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.MAIL_USERNAME && secrets.MAIL_PASSWORD && secrets.SECURITY_EMAIL_RECIPIENTS
-              uses: dawidd6/action-send-mail@v3
+              uses: dawidd6/action-send-mail@v6
               with:
                   server_address: smtp.gmail.com
                   server_port: 587
