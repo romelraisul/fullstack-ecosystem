@@ -51,7 +51,7 @@ jobs:
       policy_decision: ${{ steps.policy.outputs.decision }}
       policy_reason: ${{ steps.policy.outputs.reason }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build image (no push)
         run: docker build -f "${{ inputs.dockerfile }}" -t local-scan:latest "${{ inputs.context }}"
