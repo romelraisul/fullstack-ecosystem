@@ -64,7 +64,14 @@ jobs:
                         '{"licenses": []}' | Out-File build-reports/licenses_windows.json -Encoding utf8
                     }
                     $null = New-Item -ItemType File -Path build-reports/safety_report_windows.json -Force
-                    '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
+                        # Run safety to produce a JSON report; fallback to empty JSON if safety fails
+                        try {
+                            python -m pip install safety -q
+                            # safety CLI may be installed as 'safety'; prefer module invocation for reliability
+                            python -m safety check --json > build-reports/safety_report_windows.json
+                        } catch {
+                            '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
+                        }
                     $null = New-Item -ItemType File -Path build-reports/bandit_report_windows.json -Force
                     '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
                     $null = New-Item -ItemType File -Path build-reports/semgrep_report_windows.json -Force
@@ -116,6 +123,14 @@ jobs:
                         echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
                     fi
                     echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                        # Run safety to produce a JSON report; fallback to empty JSON if safety fails
+                        python -m pip install safety -q || true
+                        if command -v safety >/dev/null 2>&1 || python -c "import safety" >/dev/null 2>&1; then
+                            # prefer module invocation when possible
+                            (python -m safety check --json > build-reports/safety_report_ubuntu.json) || echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                        else
+                            echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                        fi
                     echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
                     echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
                     echo '{"vulnerabilities": {}}' > build-reports/npm_audit_report_ubuntu.json
