@@ -27,6 +27,12 @@ on:
                 description: Sign artifacts in attest/sign phase (true/false)
                 required: false
                 default: "false"
+    pull_request:
+        paths:
+            - "Dockerfile*"
+            - "**/Dockerfile*"
+            - ".github/workflows/reusable/*.yml"
+            - ".github/workflows/container-security-orchestrator.yml"
     push:
         paths:
             - "Dockerfile*"

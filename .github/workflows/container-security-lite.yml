@@ -4,6 +4,9 @@ on:
     push:
         branches:
             - main
+    pull_request:
+        branches:
+            - main
     workflow_dispatch:
         inputs:
             image:
@@ -41,7 +44,7 @@ jobs:
     sanity:
         runs-on: ubuntu-latest
         steps:
-        - run: echo "Baseline OK"
+            - run: echo "Baseline OK"
 
     gather:
         runs-on: ubuntu-latest
@@ -49,10 +52,10 @@ jobs:
         outputs:
             extras_json: ${{ steps.extras.outputs.json }}
         steps:
-        - run: echo "Gather placeholder - ASCII only"
-                - name: Set extras list
-                    id: extras
-                    run: echo 'json=[]' >> "$GITHUB_OUTPUT"
+            - run: echo "Gather placeholder - ASCII only"
+            - name: Set extras list
+              id: extras
+              run: echo 'json=[]' >> "$GITHUBOUTPUT"
 
     primary:
         runs-on: ubuntu-latest
@@ -61,13 +64,13 @@ jobs:
             image_ref: ${{ steps.meta.outputs.image_ref }}
             image_digest: ${{ steps.digest.outputs.image_digest }}
         steps:
-        - uses: actions/checkout@v4
-                - name: Set image ref
-                    id: meta
-                    run: echo "image_ref=${DEFAULT_IMAGE}" >> "$GITHUB_OUTPUT"
-                - name: Pull or build placeholder
-                    run: echo "Pretend pull/build of ${DEFAULT_IMAGE}"
-                - name: Set fake digest
-                    id: digest
-                    run: echo "image_digest=sha256:placeholder" >> "$GITHUB_OUTPUT"
-        - run: mkdir -p artifacts/sarif artifacts/sbom artifacts/logs
+            - uses: actions/checkout@v4
+            - name: Set image ref
+              id: meta
+              run: echo "image_ref=${DEFAULT_IMAGE}" >> "$GITHUB_OUTPUT"
+            - name: Pull or build placeholder
+              run: echo "Pretend pull/build of ${DEFAULT_IMAGE}"
+            - name: Set fake digest
+              id: digest
+              run: echo "image_digest=sha256:placeholder" >> "$GITHUB_OUTPUT"
+            - run: mkdir -p artifacts/sarif artifacts/sbom artifacts/logs

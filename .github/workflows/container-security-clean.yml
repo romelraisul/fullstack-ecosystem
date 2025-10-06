@@ -2,7 +2,9 @@ name: container-security-clean
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       image:
@@ -31,357 +33,361 @@ env:
 
 jobs:
   sanity:
-        runs-on: ubuntu-latest
-        steps:
-            - run: echo "Sanity OK"
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Sanity OK"
 
-    gather:
-        runs-on: ubuntu-latest
-        needs: sanity
-        outputs:
-            extras_json: ${{ steps.extras.outputs.json }}
-        steps:
-            - run: echo "Gather placeholder"
-            - name: Set extras list
-              id: extras
-              run: echo 'json=[]' >> "$GITHUB_OUTPUT"
+  gather:
+    runs-on: ubuntu-latest
+    needs: sanity
+    outputs:
+      extras_json: ${{ steps.extras.outputs.json }}
+    steps:
+      - run: echo "Gather placeholder"
+      - name: Set extras list
+        id: extras
+        run: echo 'json=[]' >> "$GITHUB_OUTPUT"
 
-    primary:
-        runs-on: ubuntu-latest
-        needs: gather
-        outputs:
-            image_ref: ${{ steps.meta.outputs.image_ref }}
-            image_digest: ${{ steps.digest.outputs.image_digest }}
-        steps:
-            - uses: actions/checkout@v4
+  primary:
+    runs-on: ubuntu-latest
+    needs: gather
+    outputs:
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+      image_digest: ${{ steps.digest.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@v4
 
-            # Cache security tools to improve performance
-            - name: Cache security tools
-              uses: actions/cache@v4
-              with:
-                  path: |
-                      trivy-bin/
-                      grype-bin/
-                      syft-bin/
-                  key: security-tools-${{ env.TRIVY_VERSION }}-grype-0.77.0-syft-1.0.0
-                  restore-keys: |
-                      security-tools-${{ env.TRIVY_VERSION }}-
-                      security-tools-
+      # Cache security tools to improve performance
+      - name: Cache security tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            trivy-bin/
+            grype-bin/
+            syft-bin/
+          key: security-tools-${{ env.TRIVY_VERSION }}-grype-0.77.0-syft-1.0.0
+          restore-keys: |
+            security-tools-${{ env.TRIVY_VERSION }}-
+            security-tools-
 
-            - name: Set image ref
-              id: meta
-              run: echo "image_ref=${DEFAULT_IMAGE}" >> "$GITHUB_OUTPUT"
-            - name: Pull and scan container image with retry
-              id: image_pull
-              run: |
-                  retry_count=0
-                  max_retries=3
-                  while [ $retry_count -lt $max_retries ]; do
-                      echo "Attempting image pull (attempt $((retry_count + 1))/$max_retries)..."
-                      if docker pull ${DEFAULT_IMAGE}; then
-                          echo "Image pull successful"
-                          break
-                      else
-                          retry_count=$((retry_count + 1))
-                          if [ $retry_count -lt $max_retries ]; then
-                              sleep_time=$((retry_count * 15))
-                              echo "Pull failed, retrying in ${sleep_time} seconds..."
-                              sleep $sleep_time
-                          fi
-                      fi
-                  done
-                  if [ $retry_count -eq $max_retries ]; then
-                      echo "Failed to pull image after $max_retries attempts"
-                      exit 1
+      - name: Set image ref
+        id: meta
+        run: echo "image_ref=${DEFAULT_IMAGE}" >> "$GITHUB_OUTPUT"
+      - name: Pull and scan container image with retry
+        id: image_pull
+        run: |
+          retry_count=0
+          max_retries=3
+          while [ $retry_count -lt $max_retries ]; do
+              echo "Attempting image pull (attempt $((retry_count + 1))/$max_retries)..."
+              if docker pull ${DEFAULT_IMAGE}; then
+                  echo "Image pull successful"
+                  break
+              else
+                  retry_count=$((retry_count + 1))
+                  if [ $retry_count -lt $max_retries ]; then
+                      sleep_time=$((retry_count * 15))
+                      echo "Pull failed, retrying in ${sleep_time} seconds..."
+                      sleep $sleep_time
                   fi
-            - name: Set fake digest
-              id: digest
-              run: echo "image_digest=sha256:placeholder" >> "$GITHUB_OUTPUT"
-            - name: Prepare artifact dirs
-              run: mkdir -p artifacts/sarif artifacts/logs artifacts/sbom
-            - name: Install Trivy
-              run: |
-                  TRIVY_VERSION=${TRIVY_VERSION}
-                  retry_count=0
-                  max_retries=3
-                  while [ $retry_count -lt $max_retries ]; do
-                      echo "Attempting Trivy download (attempt $((retry_count + 1))/$max_retries)..."
-                      if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
-                          https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz \
-                          | tar xzf - -C . trivy; then
-                          echo "Trivy download successful"
-                          mkdir -p trivy-bin && mv trivy trivy-bin/
-                          break
-                      else
-                          retry_count=$((retry_count + 1))
-                          if [ $retry_count -lt $max_retries ]; then
-                              sleep_time=$((retry_count * 10))
-                              echo "Download failed, retrying in ${sleep_time} seconds..."
-                              sleep $sleep_time
-                          fi
-                      fi
-                  done
-                  if [ $retry_count -eq $max_retries ]; then
-                      echo "Failed to download Trivy after $max_retries attempts"
-                      exit 1
+              fi
+          done
+          if [ $retry_count -eq $max_retries ]; then
+              echo "Failed to pull image after $max_retries attempts"
+              exit 1
+          fi
+      - name: Set fake digest
+        id: digest
+        run: echo "image_digest=sha256:placeholder" >> "$GITHUB_OUTPUT"
+      - name: Prepare artifact dirs
+        run: mkdir -p artifacts/sarif artifacts/logs artifacts/sbom
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION=${TRIVY_VERSION}
+          retry_count=0
+          max_retries=3
+          while [ $retry_count -lt $max_retries ]; do
+              echo "Attempting Trivy download (attempt $((retry_count + 1))/$max_retries)..."
+              if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
+                  https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz \
+                  | tar xzf - -C . trivy; then
+                  echo "Trivy download successful"
+                  mkdir -p trivy-bin && mv trivy trivy-bin/
+                  break
+              else
+                  retry_count=$((retry_count + 1))
+                  if [ $retry_count -lt $max_retries ]; then
+                      sleep_time=$((retry_count * 10))
+                      echo "Download failed, retrying in ${sleep_time} seconds..."
+                      sleep $sleep_time
                   fi
-                  echo "Trivy version:"; ./trivy-bin/trivy --version
-            - name: Trivy image scan (SARIF + table)
-              id: trivy
-              continue-on-error: true
-              run: |
-                  # Update vulnerability database
-                  echo "Updating Trivy vulnerability database..."
-                  ./trivy-bin/trivy image --download-db-only || echo "DB update failed, proceeding with cache"
+              fi
+          done
+          if [ $retry_count -eq $max_retries ]; then
+              echo "Failed to download Trivy after $max_retries attempts"
+              exit 1
+          fi
+          echo "Trivy version:"; ./trivy-bin/trivy --version
+      - name: Trivy image scan (SARIF + table)
+        id: trivy
+        continue-on-error: true
+        run: |
+          # Update vulnerability database
+          echo "Updating Trivy vulnerability database..."
+          ./trivy-bin/trivy image --download-db-only || echo "DB update failed, proceeding with cache"
 
-                  # Run comprehensive scan with multiple output formats
-                  ./trivy-bin/trivy image --format sarif --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/sarif/trivy.sarif ${DEFAULT_IMAGE} || true
-                  ./trivy-bin/trivy image --severity ${TRIVY_SEVERITY} --no-progress ${DEFAULT_IMAGE} > artifacts/logs/trivy-table.txt || true
+          # Run comprehensive scan with multiple output formats
+          ./trivy-bin/trivy image --format sarif --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/sarif/trivy.sarif ${DEFAULT_IMAGE} || true
+          ./trivy-bin/trivy image --severity ${TRIVY_SEVERITY} --no-progress ${DEFAULT_IMAGE} > artifacts/logs/trivy-table.txt || true
 
-                  # Generate additional reports
-                  ./trivy-bin/trivy image --format json --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/logs/trivy-detailed.json ${DEFAULT_IMAGE} || true
-                  ./trivy-bin/trivy image --format cyclonedx --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/sbom/trivy-cyclonedx.json ${DEFAULT_IMAGE} || true
-            - name: Upload Trivy SARIF
-              uses: github/codeql-action/upload-sarif@v3
-              if: always()
-              with:
-                  sarif_file: artifacts/sarif/trivy.sarif
-            - name: Upload Trivy artifacts
-              uses: actions/upload-artifact@v4
-              if: always()
-              with:
-                  name: trivy-artifacts
-                  path: |
-                      artifacts/sarif/trivy.sarif
-                      artifacts/logs/trivy-table.txt
-            - name: Install Grype
-              run: |
-                  GRYPE_VERSION=0.77.0
-                  retry_count=0
-                  max_retries=3
-                  while [ $retry_count -lt $max_retries ]; do
-                      echo "Attempting Grype download (attempt $((retry_count + 1))/$max_retries)..."
-                      if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
-                          https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b ./grype-bin v${GRYPE_VERSION}; then
-                          echo "Grype download successful"
-                          break
-                      else
-                          retry_count=$((retry_count + 1))
-                          if [ $retry_count -lt $max_retries ]; then
-                              sleep_time=$((retry_count * 10))
-                              echo "Download failed, retrying in ${sleep_time} seconds..."
-                              sleep $sleep_time
-                          fi
-                      fi
-                  done
-                  if [ $retry_count -eq $max_retries ]; then
-                      echo "Failed to download Grype after $max_retries attempts"
-                      exit 1
+          # Generate additional reports
+          ./trivy-bin/trivy image --format json --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/logs/trivy-detailed.json ${DEFAULT_IMAGE} || true
+          ./trivy-bin/trivy image --format cyclonedx --severity ${TRIVY_SEVERITY} --no-progress --output artifacts/sbom/trivy-cyclonedx.json ${DEFAULT_IMAGE} || true
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: artifacts/sarif/trivy.sarif
+      - name: Upload Trivy artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-artifacts
+          path: |
+            artifacts/sarif/trivy.sarif
+            artifacts/logs/trivy-table.txt
+      - name: Install Grype
+        run: |
+          GRYPE_VERSION=0.77.0
+          retry_count=0
+          max_retries=3
+          while [ $retry_count -lt $max_retries ]; do
+              echo "Attempting Grype download (attempt $((retry_count + 1))/$max_retries)..."
+              if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
+                  https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b ./grype-bin v${GRYPE_VERSION}; then
+                  echo "Grype download successful"
+                  break
+              else
+                  retry_count=$((retry_count + 1))
+                  if [ $retry_count -lt $max_retries ]; then
+                      sleep_time=$((retry_count * 10))
+                      echo "Download failed, retrying in ${sleep_time} seconds..."
+                      sleep $sleep_time
                   fi
-                  echo "Grype version:"; ./grype-bin/grype version || true
-            - name: Grype image scan (SARIF)
-              id: grype
-              continue-on-error: true
-              run: |
-                  ./grype-bin/grype ${DEFAULT_IMAGE} -o sarif > artifacts/sarif/grype.sarif || true
-            - name: Upload Grype SARIF
-              uses: github/codeql-action/upload-sarif@v3
-              if: always()
-              with:
-                  sarif_file: artifacts/sarif/grype.sarif
-            - name: Upload Grype artifacts
-              uses: actions/upload-artifact@v4
-              if: always()
-              with:
-                  name: grype-artifacts
-                  path: artifacts/sarif/grype.sarif
-            - name: Install Syft
-              run: |
-                  SYFT_VERSION=1.0.0
-                  retry_count=0
-                  max_retries=3
-                  while [ $retry_count -lt $max_retries ]; do
-                      echo "Attempting Syft download (attempt $((retry_count + 1))/$max_retries)..."
-                      if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
-                          https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ./syft-bin v${SYFT_VERSION}; then
-                          echo "Syft download successful"
-                          break
-                      else
-                          retry_count=$((retry_count + 1))
-                          if [ $retry_count -lt $max_retries ]; then
-                              sleep_time=$((retry_count * 10))
-                              echo "Download failed, retrying in ${sleep_time} seconds..."
-                              sleep $sleep_time
-                          fi
-                      fi
-                  done
-                  if [ $retry_count -eq $max_retries ]; then
-                      echo "Failed to download Syft after $max_retries attempts"
-                      exit 1
+              fi
+          done
+          if [ $retry_count -eq $max_retries ]; then
+              echo "Failed to download Grype after $max_retries attempts"
+              exit 1
+          fi
+          echo "Grype version:"; ./grype-bin/grype version || true
+      - name: Grype image scan (SARIF)
+        id: grype
+        continue-on-error: true
+        run: |
+          ./grype-bin/grype ${DEFAULT_IMAGE} -o sarif > artifacts/sarif/grype.sarif || true
+      - name: Upload Grype SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: artifacts/sarif/grype.sarif
+      - name: Upload Grype artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grype-artifacts
+          path: artifacts/sarif/grype.sarif
+      - name: Install Syft
+        run: |
+          SYFT_VERSION=1.0.0
+          retry_count=0
+          max_retries=3
+          while [ $retry_count -lt $max_retries ]; do
+              echo "Attempting Syft download (attempt $((retry_count + 1))/$max_retries)..."
+              if curl -sSfL --max-time 300 --retry 2 --retry-delay 5 \
+                  https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ./syft-bin v${SYFT_VERSION}; then
+                  echo "Syft download successful"
+                  break
+              else
+                  retry_count=$((retry_count + 1))
+                  if [ $retry_count -lt $max_retries ]; then
+                      sleep_time=$((retry_count * 10))
+                      echo "Download failed, retrying in ${sleep_time} seconds..."
+                      sleep $sleep_time
                   fi
-                  echo "Syft version:"; ./syft-bin/syft version || true
-            - name: Syft SBOM CycloneDX
-              id: syft_cyclonedx
-              continue-on-error: true
-              run: |
-                  ./syft-bin/syft ${DEFAULT_IMAGE} -o cyclonedx-json > artifacts/sbom/syft-cyclonedx.json || true
-            - name: Syft SBOM SPDX
-              id: syft_spdx
-              continue-on-error: true
-              run: |
-                  ./syft-bin/syft ${DEFAULT_IMAGE} -o spdx-json > artifacts/sbom/syft-spdx.json || true
-            - name: Upload Syft SBOMs
-              uses: actions/upload-artifact@v4
-              if: always()
-              with:
-                  name: syft-sboms
-                  path: |
-                      artifacts/sbom/syft-cyclonedx.json
-                      artifacts/sbom/syft-spdx.json
+              fi
+          done
+          if [ $retry_count -eq $max_retries ]; then
+              echo "Failed to download Syft after $max_retries attempts"
+              exit 1
+          fi
+          echo "Syft version:"; ./syft-bin/syft version || true
+      - name: Syft SBOM CycloneDX
+        id: syft_cyclonedx
+        continue-on-error: true
+        run: |
+          ./syft-bin/syft ${DEFAULT_IMAGE} -o cyclonedx-json > artifacts/sbom/syft-cyclonedx.json || true
+      - name: Syft SBOM SPDX
+        id: syft_spdx
+        continue-on-error: true
+        run: |
+          ./syft-bin/syft ${DEFAULT_IMAGE} -o spdx-json > artifacts/sbom/syft-spdx.json || true
+      - name: Upload Syft SBOMs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: syft-sboms
+          path: |
+            artifacts/sbom/syft-cyclonedx.json
+            artifacts/sbom/syft-spdx.json
 
-    policy_summary:
-        runs-on: ubuntu-latest
-        needs: primary
-        outputs:
-            overall_pass: ${{ steps.evaluate.outputs.overall_pass }}
-            trivy_critical: ${{ steps.parse_trivy.outputs.trivy_critical }}
-            grype_critical: ${{ steps.parse_grype.outputs.grype_critical }}
-            trivy_high: ${{ steps.parse_trivy.outputs.trivy_high }}
-            grype_high: ${{ steps.parse_grype.outputs.grype_high }}
-            trivy_medium: ${{ steps.parse_trivy.outputs.trivy_medium }}
-            grype_medium: ${{ steps.parse_grype.outputs.grype_medium }}
-            trivy_low: ${{ steps.parse_trivy.outputs.trivy_low }}
-            grype_low: ${{ steps.parse_grype.outputs.grype_low }}
-        steps:
-            - name: Download Trivy artifacts
-              uses: actions/download-artifact@v4
-              with:
-                  name: trivy-artifacts
-                  path: trivy
-            - name: Download Grype artifacts
-              uses: actions/download-artifact@v4
-              with:
-                  name: grype-artifacts
-                  path: grype
-            - name: Download Syft SBOMs
-              uses: actions/download-artifact@v4
-              with:
-                  name: syft-sboms
-                  path: sboms
-            - name: Install jq
-              run: sudo apt-get update && sudo apt-get install -y jq
-            - name: Parse Trivy severities
-              id: parse_trivy
-              run: |
-                  set -e
-                  SARIF=trivy/artifacts/sarif/trivy.sarif
-                  if [ ! -f "$SARIF" ]; then echo "trivy_critical=0" >> $GITHUB_OUTPUT; echo "trivy_high=0" >> $GITHUB_OUTPUT; echo "trivy_medium=0" >> $GITHUB_OUTPUT; echo "trivy_low=0" >> $GITHUB_OUTPUT; exit 0; fi
-                  critical=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)CRITICAL"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  high=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)HIGH"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  medium=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)MEDIUM"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  low=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)LOW"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  echo "trivy_critical=$critical" >> $GITHUB_OUTPUT
-                  echo "trivy_high=$high" >> $GITHUB_OUTPUT
-                  echo "trivy_medium=$medium" >> $GITHUB_OUTPUT
-                  echo "trivy_low=$low" >> $GITHUB_OUTPUT
-            - name: Parse Grype severities
-              id: parse_grype
-              run: |
-                  set -e
-                  SARIF=grype/artifacts/sarif/grype.sarif
-                  if [ ! -f "$SARIF" ]; then echo "grype_critical=0" >> $GITHUB_OUTPUT; echo "grype_high=0" >> $GITHUB_OUTPUT; echo "grype_medium=0" >> $GITHUB_OUTPUT; echo "grype_low=0" >> $GITHUB_OUTPUT; exit 0; fi
-                  critical=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)CRITICAL"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  high=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)HIGH"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  medium=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)MEDIUM"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  low=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)LOW"))] | length' "$SARIF" 2>/dev/null || echo 0)
-                  echo "grype_critical=$critical" >> $GITHUB_OUTPUT
-                  echo "grype_high=$high" >> $GITHUB_OUTPUT
-                  echo "grype_medium=$medium" >> $GITHUB_OUTPUT
-                  echo "grype_low=$low" >> $GITHUB_OUTPUT
-            - name: Compose policy summary (markdown)
-              id: compose_summary
-              run: |
-                  set -e
-                  trivy_crit=${{ steps.parse_trivy.outputs.trivy_critical || 0 }}
-                  trivy_high=${{ steps.parse_trivy.outputs.trivy_high || 0 }}
-                  trivy_medium=${{ steps.parse_trivy.outputs.trivy_medium || 0 }}
-                  trivy_low=${{ steps.parse_trivy.outputs.trivy_low || 0 }}
-                  grype_crit=${{ steps.parse_grype.outputs.grype_critical || 0 }}
-                  grype_high=${{ steps.parse_grype.outputs.grype_high || 0 }}
-                  grype_medium=${{ steps.parse_grype.outputs.grype_medium || 0 }}
-                  grype_low=${{ steps.parse_grype.outputs.grype_low || 0 }}
-                  fail_crit=${FAIL_CRITICAL}
-                  high_threshold=${FAIL_HIGH_THRESHOLD}
-                  cat > policy-summary.md <<EOF
-                  # Container Security Policy Summary
+  policy_summary:
+    runs-on: ubuntu-latest
+    needs: primary
+    outputs:
+      overall_pass: ${{ steps.evaluate.outputs.overall_pass }}
+      trivy_critical: ${{ steps.parse_trivy.outputs.trivy_critical }}
+      grype_critical: ${{ steps.parse_grype.outputs.grype_critical }}
+      trivy_high: ${{ steps.parse_trivy.outputs.trivy_high }}
+      grype_high: ${{ steps.parse_grype.outputs.grype_high }}
+      trivy_medium: ${{ steps.parse_trivy.outputs.trivy_medium }}
+      grype_medium: ${{ steps.parse_grype.outputs.grype_medium }}
+      trivy_low: ${{ steps.parse_trivy.outputs.trivy_low }}
+      grype_low: ${{ steps.parse_grype.outputs.grype_low }}
+    steps:
+      - name: Download Trivy artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-artifacts
+          path: trivy
+      - name: Download Grype artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: grype-artifacts
+          path: grype
+      - name: Download Syft SBOMs
+        uses: actions/download-artifact@v4
+        with:
+          name: syft-sboms
+          path: sboms
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Parse Trivy severities
+        id: parse_trivy
+        run: |
+          set -e
+          SARIF=trivy/artifacts/sarif/trivy.sarif
+          if [ ! -f "$SARIF" ]; then echo "trivy_critical=0" >> $GITHUB_OUTPUT; echo "trivy_high=0" >> $GITHUB_OUTPUT; echo "trivy_medium=0" >> $GITHUB_OUTPUT; echo "trivy_low=0" >> $GITHUB_OUTPUT; exit 0; fi
+          critical=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)CRITICAL"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          high=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)HIGH"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          medium=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)MEDIUM"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          low=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)LOW"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          echo "trivy_critical=$critical" >> $GITHUB_OUTPUT
+          echo "trivy_high=$high" >> $GITHUB_OUTPUT
+          echo "trivy_medium=$medium" >> $GITHUB_OUTPUT
+          echo "trivy_low=$low" >> $GITHUB_OUTPUT
+      - name: Parse Grype severities
+        id: parse_grype
+        run: |
+          set -e
+          SARIF=grype/artifacts/sarif/grype.sarif
+          if [ ! -f "$SARIF" ]; then echo "grype_critical=0" >> $GITHUB_OUTPUT; echo "grype_high=0" >> $GITHUB_OUTPUT; echo "grype_medium=0" >> $GITHUB_OUTPUT; echo "grype_low=0" >> $GITHUB_OUTPUT; exit 0; fi
+          critical=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)CRITICAL"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          high=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)HIGH"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          medium=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)MEDIUM"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          low=$(jq '[.. | objects? | select(.ruleId?) | select(.ruleId|test("(?i)LOW"))] | length' "$SARIF" 2>/dev/null || echo 0)
+          echo "grype_critical=$critical" >> $GITHUB_OUTPUT
+          echo "grype_high=$high" >> $GITHUB_OUTPUT
+          echo "grype_medium=$medium" >> $GITHUB_OUTPUT
+          echo "grype_low=$low" >> $GITHUB_OUTPUT
+      - name: Compose policy summary (markdown)
+        id: compose_summary
+        run: |
+          set -e
+          trivy_crit=${{ steps.parse_trivy.outputs.trivy_critical || 0 }}
+          trivy_high=${{ steps.parse_trivy.outputs.trivy_high || 0 }}
+          trivy_medium=${{ steps.parse_trivy.outputs.trivy_medium || 0 }}
+          trivy_low=${{ steps.parse_trivy.outputs.trivy_low || 0 }}
+          grype_crit=${{ steps.parse_grype.outputs.grype_critical || 0 }}
+          grype_high=${{ steps.parse_grype.outputs.grype_high || 0 }}
+          grype_medium=${{ steps.parse_grype.outputs.grype_medium || 0 }}
+          grype_low=${{ steps.parse_grype.outputs.grype_low || 0 }}
+          fail_crit=${FAIL_CRITICAL}
+          high_threshold=${FAIL_HIGH_THRESHOLD}
+          cat > policy-summary.md <<EOF
+          # Container Security Policy Summary
 
-                  | Scanner | Critical | High | Medium | Low |
-                  |---------|----------|------|--------|-----|
-                  | Trivy   | ${trivy_crit} | ${trivy_high} | ${trivy_medium} | ${trivy_low} |
-                  | Grype   | ${grype_crit} | ${grype_high} | ${grype_medium} | ${grype_low} |
+          | Scanner | Critical | High | Medium | Low |
+          |---------|----------|------|--------|-----|
+          | Trivy   | ${trivy_crit} | ${trivy_high} | ${trivy_medium} | ${trivy_low} |
+          | Grype   | ${grype_crit} | ${grype_high} | ${grype_medium} | ${grype_low} |
 
-                  Thresholds:
-                  - FAIL_CRITICAL: ${fail_crit}
-                  - FAIL_HIGH_THRESHOLD (per-scanner High max): ${high_threshold}
-                  EOF
-                  echo "summary_created=true" >> $GITHUB_OUTPUT
-            - name: Evaluate policy (per-scanner gating + JSON)
-              id: evaluate
-              run: |
-                  set -e
-                  trivy_crit=${{ steps.parse_trivy.outputs.trivy_critical || 0 }}
-                  trivy_high=${{ steps.parse_trivy.outputs.trivy_high || 0 }}
-                  trivy_medium=${{ steps.parse_trivy.outputs.trivy_medium || 0 }}
-                  trivy_low=${{ steps.parse_trivy.outputs.trivy_low || 0 }}
-                  grype_crit=${{ steps.parse_grype.outputs.grype_critical || 0 }}
-                  grype_high=${{ steps.parse_grype.outputs.grype_high || 0 }}
-                  grype_medium=${{ steps.parse_grype.outputs.grype_medium || 0 }}
-                  grype_low=${{ steps.parse_grype.outputs.grype_low || 0 }}
-                  fail_crit=${FAIL_CRITICAL}
-                  high_threshold=${FAIL_HIGH_THRESHOLD}
-                  trivy_pass=true; trivy_reason=""
-                  grype_pass=true; grype_reason=""
-                  if [ "$fail_crit" = "true" ] && [ $trivy_crit -gt 0 ]; then trivy_pass=false; trivy_reason="Critical vulnerabilities present"; fi
-                  if [ "$fail_crit" = "true" ] && [ $grype_crit -gt 0 ]; then grype_pass=false; grype_reason="Critical vulnerabilities present"; fi
-                  if [ $high_threshold -gt 0 ] && [ $trivy_high -gt $high_threshold ]; then trivy_pass=false; trivy_reason="High > threshold ($trivy_high > $high_threshold)"; fi
-                  if [ $high_threshold -gt 0 ] && [ $grype_high -gt $high_threshold ]; then grype_pass=false; grype_reason="High > threshold ($grype_high > $high_threshold)"; fi
-                  overall_pass=true; if [ "$trivy_pass" != "true" ] || [ "$grype_pass" != "true" ]; then overall_pass=false; fi
-                  esc() { printf '%s' "$1" | sed 's/"/\\"/g'; }
-                  cat > policy-summary.json <<JSON
-                  {
-                    "scanners": {
-                      "trivy": {"critical": $trivy_crit, "high": $trivy_high, "medium": $trivy_medium, "low": $trivy_low, "pass": $([ "$trivy_pass" = true ] && echo true || echo false), "reason": "$(esc "$trivy_reason")"},
-                      "grype": {"critical": $grype_crit, "high": $grype_high, "medium": $grype_medium, "low": $grype_low, "pass": $([ "$grype_pass" = true ] && echo true || echo false), "reason": "$(esc "$grype_reason")"}
-                    },
-                    "thresholds": {"fail_critical": "$fail_crit", "high_threshold": $high_threshold},
-                    "overall_pass": $([ "$overall_pass" = true ] && echo true || echo false)
-                  }
-                  JSON
-                  echo "overall_pass=$overall_pass" >> $GITHUB_OUTPUT
-                  echo "trivy_pass=$trivy_pass" >> $GITHUB_OUTPUT
-                  echo "grype_pass=$grype_pass" >> $GITHUB_OUTPUT
-                  echo "trivy_reason=$trivy_reason" >> $GITHUB_OUTPUT
-                  echo "grype_reason=$grype_reason" >> $GITHUB_OUTPUT
-            - name: Upload policy artifacts
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: policy-summary
-                  path: |
-                      policy-summary.md
-                      policy-summary.json
-            - name: Append markdown summary
-              if: always()
-              run: |
-                  if [ -f policy-summary.md ]; then cat policy-summary.md >> $GITHUB_STEP_SUMMARY; fi
-            - name: Fail if policy failed
-              if: steps.evaluate.outputs.overall_pass != 'true'
-              run: |
-                  echo "Policy gate failed (overall_pass=false). See policy-summary.json for details." >&2
-                  exit 1
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install --upgrade --force-reinstall bcrypt passlib[bcrypt]
-    - name: Generate Ultimate Enterprise Summary
-      run: python fullstack-ecosystem\autogen\ultimate_enterprise_summary.py
+          Thresholds:
+          - FAIL_CRITICAL: ${fail_crit}
+          - FAIL_HIGH_THRESHOLD (per-scanner High max): ${high_threshold}
+          EOF
+          echo "summary_created=true" >> $GITHUB_OUTPUT
+      - name: Evaluate policy (per-scanner gating + JSON)
+        id: evaluate
+        run: |
+          set -e
+          trivy_crit=${{ steps.parse_trivy.outputs.trivy_critical || 0 }}
+          trivy_high=${{ steps.parse_trivy.outputs.trivy_high || 0 }}
+          trivy_medium=${{ steps.parse_trivy.outputs.trivy_medium || 0 }}
+          trivy_low=${{ steps.parse_trivy.outputs.trivy_low || 0 }}
+          grype_crit=${{ steps.parse_grype.outputs.grype_critical || 0 }}
+          grype_high=${{ steps.parse_grype.outputs.grype_high || 0 }}
+          grype_medium=${{ steps.parse_grype.outputs.grype_medium || 0 }}
+          grype_low=${{ steps.parse_grype.outputs.grype_low || 0 }}
+          fail_crit=${FAIL_CRITICAL}
+          high_threshold=${FAIL_HIGH_THRESHOLD}
+          trivy_pass=true; trivy_reason=""
+          grype_pass=true; grype_reason=""
+          if [ "$fail_crit" = "true" ] && [ $trivy_crit -gt 0 ]; then trivy_pass=false; trivy_reason="Critical vulnerabilities present"; fi
+          if [ "$fail_crit" = "true" ] && [ $grype_crit -gt 0 ]; then grype_pass=false; grype_reason="Critical vulnerabilities present"; fi
+          if [ $high_threshold -gt 0 ] && [ $trivy_high -gt $high_threshold ]; then trivy_pass=false; trivy_reason="High > threshold ($trivy_high > $high_threshold)"; fi
+          if [ $high_threshold -gt 0 ] && [ $grype_high -gt $high_threshold ]; then grype_pass=false; grype_reason="High > threshold ($grype_high > $high_threshold)"; fi
+          overall_pass=true; if [ "$trivy_pass" != "true" ] || [ "$grype_pass" != "true" ]; then overall_pass=false; fi
+          esc() { printf '%s' "$1" | sed 's/"/\\"/g'; }
+          cat > policy-summary.json <<JSON
+          {
+            "scanners": {
+              "trivy": {"critical": $trivy_crit, "high": $trivy_high, "medium": $trivy_medium, "low": $trivy_low, "pass": $([ "$trivy_pass" = true ] && echo true || echo false), "reason": "$(esc "$trivy_reason")"},
+              "grype": {"critical": $grype_crit, "high": $grype_high, "medium": $grype_medium, "low": $grype_low, "pass": $([ "$grype_pass" = true ] && echo true || echo false), "reason": "$(esc "$grype_reason")"}
+            },
+            "thresholds": {"fail_critical": "$fail_crit", "high_threshold": $high_threshold},
+            "overall_pass": $([ "$overall_pass" = true ] && echo true || echo false)
+          }
+          JSON
+          echo "overall_pass=$overall_pass" >> $GITHUB_OUTPUT
+          echo "trivy_pass=$trivy_pass" >> $GITHUB_OUTPUT
+          echo "grype_pass=$grype_pass" >> $GITHUB_OUTPUT
+          echo "trivy_reason=$trivy_reason" >> $GITHUB_OUTPUT
+          echo "grype_reason=$grype_reason" >> $GITHUB_OUTPUT
+      - name: Upload policy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-summary
+          path: |
+            policy-summary.md
+            policy-summary.json
+      - name: Append markdown summary
+        if: always()
+        run: |
+          if [ -f policy-summary.md ]; then cat policy-summary.md >> $GITHUB_STEP_SUMMARY; fi
+      - name: Fail if policy failed
+        if: steps.evaluate.outputs.overall_pass != 'true'
+        run: |
+          echo "Policy gate failed (overall_pass=false). See policy-summary.json for details." >&2
+          exit 1
+  install-and-generate:
+    runs-on: ubuntu-latest
+    needs: policy_summary
+    steps:
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade --force-reinstall bcrypt passlib[bcrypt]
+      - name: Generate Ultimate Enterprise Summary
+        run: python fullstack-ecosystem\autogen\ultimate_enterprise_summary.py

@@ -406,7 +406,7 @@ EOF
           git config user.name 'github-actions'
           git config user.email 'actions@users.noreply.github.com'
           git add perf/performance_baseline.json
-            git commit -m 'chore: update performance baseline'
+          git commit -m 'chore: update performance baseline'
           git push origin "$BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "changed=true" >> $GITHUB_OUTPUT
