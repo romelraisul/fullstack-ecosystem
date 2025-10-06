@@ -1,0 +1,117 @@
+# Pre-commit hooks for comprehensive code quality
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+# Update: pre-commit autoupdate
+
+repos:
+  # Local hooks using our custom scripts with proper encoding
+  - repo: local
+    hooks:
+      # Code formatting (auto-fix)
+      - id: format-code
+        name: Format code (black + ruff)
+        entry: python scripts/pre_commit_wrapper.py format.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        exclude: ^autogen/
+        
+      # Code linting (check only, no auto-fix in pre-commit)
+      - id: lint-code
+        name: Lint code (ruff + flake8)
+        entry: python scripts/pre_commit_wrapper.py lint.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: false
+        verbose: true
+        exclude: '^(autogen/|scripts/|tests/)'
+        
+      # Type checking
+      - id: type-check
+        name: Type checking (mypy)
+        entry: python scripts/pre_commit_wrapper.py type_check.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: false
+        verbose: true
+        exclude: '^(autogen/|scripts/|tests/)'
+        
+      # Fast test subset (unit tests, quick validation)
+      - id: test-fast
+        name: Fast tests (unit tests only)
+        entry: python -m pytest tests/unit/ -x --tb=short -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: false
+        verbose: true
+        exclude: '^(autogen/|scripts/|tests/)'
+
+      # Comprehensive quality check (runs on push)
+      - id: quality-full
+        name: Full quality check (format + lint + type + tests)
+        entry: python scripts/pre_commit_wrapper.py quality.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: false
+        verbose: true
+        stages: [pre-push]
+        exclude: '^(autogen/|scripts/|tests/)'
+        
+      # Documentation linting (runs on push) - Skip if markdownlint not available
+      - id: lint-docs
+        name: Lint documentation
+        entry: bash -c 'if command -v markdownlint-cli2 &> /dev/null; then markdownlint-cli2 "**/*.md" "#node_modules"; else echo "markdownlint-cli2 not found, skipping"; fi'
+        language: system
+        types: [markdown]
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        stages: [pre-push]
+
+  # Built-in hooks for general file validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.(md|rst)$'
+      - id: end-of-file-fixer
+        exclude: '\.(md|rst)$'
+      - id: check-yaml
+        exclude: '.*template.*'
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: debug-statements
+        exclude: 'tests/.*'
+      - id: check-executables-have-shebangs
+        exclude: '\.ps1$'
+
+  # Security scanning - Skip bandit for now due to dependency issues
+  # - repo: https://github.com/PyCQA/bandit
+  #   rev: 1.7.5
+  #   hooks:
+  #     - id: bandit
+  #       args: ['-r', '.', '-f', 'json', '-o', 'bandit-report.json']
+  #       exclude: 'tests/.*'
+        
+  # Additional Python code quality
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.3
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: '^(autogen/|scripts/|tests/)'
+      - id: ruff-format
+        exclude: '^(autogen/|scripts/|tests/)'
+
+# Configuration for pre-commit behavior
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]

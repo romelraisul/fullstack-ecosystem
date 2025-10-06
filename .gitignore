@@ -35,3 +35,9 @@ node_modules/
 # Generated SDK clients
 clients/
 
+# Generated autogen artifacts (ignore whole directory and common artifacts)
+autogen/
+autogen/nul
+autogen/*.py
+autogen/*.json
+autogen/*.md

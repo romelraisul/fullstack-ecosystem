@@ -44,7 +44,7 @@ dev = [
   "opentelemetry-exporter-otlp==1.25.0"
 ]
 ml = [
-  "torch>=2.0.0", 
+  "torch>=2.0.0",
   "tensorflow>=2.13.0",
   "scikit-learn>=1.2.0",
   "scipy>=1.11.0",
@@ -114,13 +114,15 @@ exclude = [
     "migrations",
     # Temporarily exclude files with syntax errors
     "complete-enterprise-activation.py",
-    "ultimate_enterprise_summary.py", 
+    "ultimate_enterprise_summary.py",
     "aggregate_quantile_benchmarks.py",
     "create_demo_sdk_package_fixed.py",
     "render_governance_status.py",
     "start_unified_dashboard.py",
     "autogen/complete-enterprise-activation.py",
     "autogen/ultimate_enterprise_summary.py",
+  # Exclude entire autogen directory to reduce lint/test noise
+  "autogen/",
     "backend/tests/conftest.py",
     "governance-app/tests/test_action_refs.py",
     "scripts/aggregate_quantile_benchmarks.py",
@@ -208,6 +210,8 @@ exclude = [
     "start_unified_dashboard.py",
     "autogen/complete-enterprise-activation.py",
     "autogen/ultimate_enterprise_summary.py",
+  # Exclude entire autogen directory from mypy
+  "autogen/",
     "backend/tests/conftest.py",
     "governance-app/tests/test_action_refs.py",
     "scripts/aggregate_quantile_benchmarks.py",
