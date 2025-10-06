@@ -28,118 +28,122 @@ jobs:
         runs-on: windows-latest
         steps:
             - name: Checkout
-                uses: actions/checkout@v4
+              uses: actions/checkout@v4
 
             - name: Setup Python
-                uses: actions/setup-python@v4
-                with:
-                    python-version: '3.11'
+              uses: actions/setup-python@v4
+              with:
+                  python-version: '3.11'
 
             - name: Setup Node.js
-                uses: actions/setup-node@v4
-                with:
-                    node-version: '18'
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '18'
 
             - name: Prepare build-reports
-                shell: pwsh
-                run: New-Item -ItemType Directory -Path build-reports -Force
+              shell: pwsh
+              run: New-Item -ItemType Directory -Path build-reports -Force
 
             - name: Install security tools (Windows)
-                shell: pwsh
-                run: |
+              shell: pwsh
+              run: |
                     python -m pip install --upgrade pip
-                    python -m pip install pip-licenses safety bandit semgrep || true
+                    python -m pip install pip-licenses safety bandit -q || true
                     npm --version || true
 
-            - name: Run scans (Windows) - placeholder
-                shell: pwsh
-                run: |
-                    # Lightweight placeholders so artifact files exist while we add scanners incrementally
-                    $null = New-Item -ItemType File -Path build-reports/licenses_windows.json -Force
-                    # Generate licenses using pip-licenses (JSON). Fallback to empty if pip-licenses not available.
+            - name: Run scans (Windows)
+              shell: pwsh
+              run: |
+                    # pip-licenses
                     try {
                         python -m pip install pip-licenses -q
                         pip-licenses --format=json > build-reports/licenses_windows.json
                     } catch {
                         '{"licenses": []}' | Out-File build-reports/licenses_windows.json -Encoding utf8
                     }
-                    $null = New-Item -ItemType File -Path build-reports/safety_report_windows.json -Force
-                        # Run safety to produce a JSON report; fallback to empty JSON if safety fails
-                        try {
-                            python -m pip install safety -q
-                            # safety CLI may be installed as 'safety'; prefer module invocation for reliability
-                            python -m safety check --json > build-reports/safety_report_windows.json
-                        } catch {
-                            '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
-                        }
-                    $null = New-Item -ItemType File -Path build-reports/bandit_report_windows.json -Force
-                    '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
-                    $null = New-Item -ItemType File -Path build-reports/semgrep_report_windows.json -Force
-                    '{"results": []}' | Out-File build-reports/semgrep_report_windows.json -Encoding utf8
-                    $null = New-Item -ItemType File -Path build-reports/npm_audit_report_windows.json -Force
-                    '{"vulnerabilities": {}}' | Out-File build-reports/npm_audit_report_windows.json -Encoding utf8
+
+                    # safety
+                    try {
+                        python -m pip install safety -q
+                        python -m safety check --json > build-reports/safety_report_windows.json
+                    } catch {
+                        '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
+                    }
+
+                    # bandit
+                    try {
+                        python -m pip install bandit -q
+                        bandit -r . -f json -o build-reports/bandit_report_windows.json || echo '{"results": []}' > build-reports/bandit_report_windows.json
+                    } catch {
+                        '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
+                    }
 
             - name: Upload build-reports artifact (windows)
-                uses: actions/upload-artifact@v4
-                with:
-                    name: license-cve-scan-reports-windows
-                    path: build-reports/**
+              uses: actions/upload-artifact@v4
+              with:
+                  name: license-cve-scan-reports-windows
+                  path: build-reports/**
 
     scan-ubuntu:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
-                uses: actions/checkout@v4
+              uses: actions/checkout@v4
 
             - name: Setup Python
-                uses: actions/setup-python@v4
-                with:
-                    python-version: '3.11'
+              uses: actions/setup-python@v4
+              with:
+                  python-version: '3.11'
 
             - name: Setup Node.js
-                uses: actions/setup-node@v4
-                with:
-                    node-version: '18'
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '18'
 
             - name: Prepare build-reports
-                run: mkdir -p build-reports
+              run: mkdir -p build-reports
 
             - name: Install security tools (Ubuntu)
-                run: |
-                    set -euxo pipefail
-                    python -m pip install --upgrade pip
-                    python -m pip install pip-licenses safety bandit semgrep || true
-                    npm --version || true
+              run: |
+                  set -euxo pipefail
+                  python -m pip install --upgrade pip
+                  python -m pip install pip-licenses safety bandit -q || true
+                  npm --version || true
 
-            - name: Run scans (Ubuntu) - placeholder
-                run: |
+            - name: Run scans (Ubuntu)
+              run: |
                     set -euxo pipefail
                     mkdir -p build-reports
-                    # Generate licenses using pip-licenses (JSON). Fallback to empty if pip-licenses not available.
+
+                    # pip-licenses
                     python -m pip install pip-licenses -q || true
                     if command -v pip-licenses >/dev/null 2>&1; then
                         pip-licenses --format=json > build-reports/licenses_ubuntu.json || echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
                     else
                         echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
                     fi
-                    echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
-                        # Run safety to produce a JSON report; fallback to empty JSON if safety fails
-                        python -m pip install safety -q || true
-                        if command -v safety >/dev/null 2>&1 || python -c "import safety" >/dev/null 2>&1; then
-                            # prefer module invocation when possible
-                            (python -m safety check --json > build-reports/safety_report_ubuntu.json) || echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
-                        else
-                            echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
-                        fi
-                    echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
-                    echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
-                    echo '{"vulnerabilities": {}}' > build-reports/npm_audit_report_ubuntu.json
+
+                    # safety
+                    python -m pip install safety -q || true
+                    if command -v safety >/dev/null 2>&1 || python -c "import safety" >/dev/null 2>&1; then
+                        (python -m safety check --json > build-reports/safety_report_ubuntu.json) || echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                    else
+                        echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                    fi
+
+                    # bandit
+                    python -m pip install bandit -q || true
+                    if command -v bandit >/dev/null 2>&1; then
+                        bandit -r . -f json -o build-reports/bandit_report_ubuntu.json || echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
+                    else
+                        echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
+                    fi
 
             - name: Upload build-reports artifact (ubuntu)
-                uses: actions/upload-artifact@v4
-                with:
-                    name: license-cve-scan-reports-ubuntu
-                    path: build-reports/**
+              uses: actions/upload-artifact@v4
+              with:
+                  name: license-cve-scan-reports-ubuntu
+                  path: build-reports/**
 
     notify-security-team:
         runs-on: ubuntu-latest
@@ -147,15 +151,15 @@ jobs:
         if: always()
         steps:
             - name: Download vulnerability reports
-                uses: actions/download-artifact@v4
-                with:
-                    pattern: license-cve-scan-reports-*
-                    merge-multiple: true
-                    path: ./reports
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: license-cve-scan-reports-*
+                  merge-multiple: true
+                  path: ./reports
 
             - name: Aggregate reports
-                id: aggregate
-                run: |
+              id: aggregate
+              run: |
                     python3 - <<'PY'
                     import json, glob, os
                     total = { 'critical': 0, 'high': 0, 'medium': 0 }
@@ -164,12 +168,14 @@ jobs:
                                     d = json.load(open(p))
                             except Exception:
                                     continue
+
                             # npm audit shape
                             if isinstance(d, dict) and 'metadata' in d and isinstance(d.get('metadata'), dict):
                                     v = d.get('metadata', {}).get('vulnerabilities', {})
                                     total['critical'] += int(v.get('critical', 0) or 0)
                                     total['high'] += int(v.get('high', 0) or 0)
                                     total['medium'] += int(v.get('moderate', 0) or v.get('medium', 0) or 0)
+
                             # safety (list or dict)
                             if isinstance(d, dict) and 'vulnerabilities' in d and isinstance(d['vulnerabilities'], list):
                                     for v in d['vulnerabilities']:
@@ -180,6 +186,7 @@ jobs:
                                                     total['high'] += 1
                                             elif sev == 'medium':
                                                     total['medium'] += 1
+
                             # bandit results
                             if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
                                     for r in d['results']:
@@ -188,9 +195,11 @@ jobs:
                                                     total['high'] += 1
                                             elif sev == 'medium':
                                                     total['medium'] += 1
+
                     os.makedirs('reports/summary', exist_ok=True)
                     with open('reports/summary/summary.json','w') as f:
                             json.dump(total, f)
+
                     # export simple outputs
                     with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
                             out.write(f"critical={total['critical']}\n")
@@ -200,8 +209,8 @@ jobs:
                     PY
 
             - name: Evaluate threshold
-                id: threshold
-                run: |
+              id: threshold
+              run: |
                     python3 - <<'PY'
                     import json, os
                     th = os.environ.get('SEVERITY_THRESHOLD','high').lower()
@@ -213,6 +222,7 @@ jobs:
                             found = data.get('critical',0) > 0 or data.get('high',0) > 0
                     else:
                             found = data.get('critical',0) > 0 or data.get('high',0) > 0 or data.get('medium',0) > 0
+
                     # write output for later steps
                     with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
                             out.write(f"vulnerability_found={'true' if found else 'false'}\n")
@@ -220,7 +230,7 @@ jobs:
                     PY
 
             - name: Create security summary markdown
-                run: |
+              run: |
                     echo "# 🔒 Security Scan Summary" > security_summary.md
                     echo "" >> security_summary.md
                     echo "**Repository:** ${{ github.repository }}" >> security_summary.md
@@ -231,11 +241,11 @@ jobs:
                     cat reports/summary/summary.json | jq -r 'to_entries[] | "- **\(.key)\**: \(.value)"' >> security_summary.md || true
 
             - name: Create GitHub Issue for security alert
-                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
-                uses: actions/github-script@v7
-                with:
-                    github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
-                    script: |
+              if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
+              uses: actions/github-script@v7
+              with:
+                  github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
+                  script: |
                         const fs = require('fs');
                         const summary = fs.readFileSync('security_summary.md', 'utf8');
                         const issue = await github.rest.issues.create({
@@ -248,29 +258,30 @@ jobs:
                         console.log(`Created security issue: ${issue.data.html_url}`);
 
             - name: Send Slack notification
-                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.SLACK_WEBHOOK_URL
-                uses: 8398a7/action-slack@v3
-                with:
-                    status: custom
-                    title: "🚨 Security Vulnerabilities Detected"
-                    message: |
-                        Repository: ${{ github.repository }}
-                        Branch: ${{ github.ref_name }}
-                        Threshold: ${{ env.SEVERITY_THRESHOLD }}
-                        Run: ${{ github.run_number }}
-                env:
-                    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+              if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.SLACK_WEBHOOK_URL
+              uses: 8398a7/action-slack@v3
+              with:
+                  status: custom
+                  title: "🚨 Security Vulnerabilities Detected"
+                  message: |
+                      Repository: ${{ github.repository }}
+                      Branch: ${{ github.ref_name }}
+                      Threshold: ${{ env.SEVERITY_THRESHOLD }}
+                      Run: ${{ github.run_number }}
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
             - name: Send email notification
-                if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.MAIL_USERNAME && secrets.MAIL_PASSWORD && secrets.SECURITY_EMAIL_RECIPIENTS
-                uses: dawidd6/action-send-mail@v3
-                with:
-                    server_address: smtp.gmail.com
-                    server_port: 587
-                    username: ${{ secrets.MAIL_USERNAME }}
-                    password: ${{ secrets.MAIL_PASSWORD }}
-                    subject: "🚨 Security Alert: Vulnerabilities Detected in ${{ github.repository }}"
-                    to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
-                    from: "GitHub Actions Security Scanner <${{ secrets.MAIL_USERNAME }}>"
-                    html_body: |
-                        <pre>${{ steps.aggregate.outputs }}</pre>
+              if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.MAIL_USERNAME && secrets.MAIL_PASSWORD && secrets.SECURITY_EMAIL_RECIPIENTS
+              uses: dawidd6/action-send-mail@v3
+              with:
+                  server_address: smtp.gmail.com
+                  server_port: 587
+                  username: ${{ secrets.MAIL_USERNAME }}
+                  password: ${{ secrets.MAIL_PASSWORD }}
+                  to: ${{ secrets.SECURITY_EMAIL_RECIPIENTS }}
+                  from: ${{ secrets.MAIL_USERNAME }}
+                  subject: "🚨 Security Alert: Vulnerabilities detected in ${{ github.repository }}"
+                  body: file://security_summary.md
+                  html_body: |
+                      <pre>${{ steps.aggregate.outputs }}</pre>
