@@ -2,9 +2,8 @@ name: Enhanced License and CVE Security Scan
 
 on:
     schedule:
-        # Multiple daily scans for better security coverage
-        - cron: "0 3 * * *" # 03:00 UTC (early morning)
-        - cron: "0 15 * * *" # 15:00 UTC (afternoon)
+        - cron: '0 3 * * *'
+        - cron: '0 15 * * *'
     workflow_dispatch:
         inputs:
             severity_threshold:
@@ -26,114 +25,118 @@ env:
     SEVERITY_THRESHOLD: ${{ github.event.inputs.severity_threshold || 'high' }}
     NOTIFICATION_ENABLED: ${{ github.event.inputs.notification_enabled || 'true' }}
 
+permissions:
+    contents: read
+    issues: write
+
 jobs:
     scan-windows:
         runs-on: windows-latest
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+                uses: actions/checkout@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v4
-              with:
-                  python-version: "3.11"
+                uses: actions/setup-python@v4
+                with:
+                    python-version: '3.11'
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "18"
+                uses: actions/setup-node@v4
+                with:
+                    node-version: '18'
 
             - name: Ensure build-reports directory
-              shell: pwsh
-              run: New-Item -ItemType Directory -Path build-reports -Force
+                shell: pwsh
+                run: New-Item -ItemType Directory -Path build-reports -Force
 
             - name: Install additional security tools
-              shell: pwsh
-              run: |
-                  python -m pip install --upgrade pip
-                  python -m pip install bandit semgrep
+                shell: pwsh
+                run: |
+                    python -m pip install --upgrade pip
+                    python -m pip install bandit semgrep
 
             - name: Run license & CVE scan (PowerShell)
-              shell: pwsh
-              run: ./scripts/license_cve_scan.ps1 -FailOnHigh:$false
+                shell: pwsh
+                run: |
+                    pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\license_cve_scan.ps1 -FailOnHigh:$false
 
             - name: Run Bandit security linter (Windows)
-              shell: pwsh
-              run: |
-                  bandit -r . -f json -o build-reports/bandit_report_windows.json
-              continue-on-error: true
+                shell: pwsh
+                run: |
+                    bandit -r . -f json -o build-reports/bandit_report_windows.json
+                continue-on-error: true
 
             - name: Run npm audit (Windows, if package.json exists)
-              shell: pwsh
-              run: |
-                  if (Test-Path package.json) {
-                      npm audit --audit-level=moderate --json | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                  } else {
-                      Write-Host "No package.json found, skipping npm audit"
-                      '{"vulnerabilities": {}}' | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
-                  }
-              continue-on-error: true
+                shell: pwsh
+                run: |
+                    if (Test-Path package.json) {
+                        npm audit --audit-level=moderate --json | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
+                    } else {
+                        Write-Host "No package.json found, skipping npm audit"
+                        '{"vulnerabilities": {}}' | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
+                    }
+                continue-on-error: true
 
             - name: Upload build-reports artifact (windows)
-              uses: actions/upload-artifact@v4
-              with:
-                  name: license-cve-scan-reports-windows
-                  path: build-reports/**
+                uses: actions/upload-artifact@v4
+                with:
+                    name: license-cve-scan-reports-windows
+                    path: build-reports/**
 
     scan-ubuntu:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+                        - name: Checkout
+                            uses: actions/checkout@v4
 
-            - name: Setup Python
-              uses: actions/setup-python@v4
-              with:
-                  python-version: "3.11"
+                        - name: Setup Python
+                            uses: actions/setup-python@v4
+                            with:
+                                python-version: '3.11'
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "18"
+                        - name: Setup Node.js
+                            uses: actions/setup-node@v4
+                            with:
+                                node-version: '18'
 
-            - name: Ensure build-reports directory
-              run: mkdir -p build-reports
+                        - name: Ensure build-reports directory
+                            shell: pwsh
+                            run: New-Item -ItemType Directory -Path build-reports -Force
 
-            - name: Create venv and install security tools
-              run: |
-                  python -m venv .venv
-                  . .venv/bin/activate
-                  python -m pip install --upgrade pip
-                  python -m pip install pip-licenses safety bandit semgrep
+                        - name: Install additional security tools
+                            shell: pwsh
+                            run: |
+                                python -m pip install --upgrade pip
+                                python -m pip install bandit semgrep
 
-            - name: Run pip-licenses
-              run: |
-                  . .venv/bin/activate
-                  python -m piplicenses --format=json --with-urls > build-reports/licenses.json || true
+                        - name: Run license & CVE scan (PowerShell)
+                            shell: pwsh
+                            run: |
+                                pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\scripts\license_cve_scan.ps1 -FailOnHigh:$false
 
-            - name: Run safety scan (JSON)
-              run: |
-                  . .venv/bin/activate
-                  python -m safety check --json > build-reports/safety_report.json || true
+                        - name: Run Bandit security linter (Windows)
+                            shell: pwsh
+                            run: |
+                                bandit -r . -f json -o build-reports/bandit_report_windows.json
+                            continue-on-error: true
 
-            - name: Run Bandit security linter
-              run: |
-                  . .venv/bin/activate
-                  bandit -r . -f json -o build-reports/bandit_report.json || true
+                        - name: Run npm audit (Windows, if package.json exists)
+                            shell: pwsh
+                            run: |
+                                if (Test-Path package.json) {
+                                    npm audit --audit-level=moderate --json | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
+                                } else {
+                                    Write-Host "No package.json found, skipping npm audit"
+                                    '{"vulnerabilities": {}}' | Out-File -FilePath build-reports/npm_audit_report_windows.json -Encoding utf8
+                                }
+                            continue-on-error: true
 
-            - name: Run Semgrep security analysis
-              run: |
-                  . .venv/bin/activate
-                  semgrep --config=auto --json --output=build-reports/semgrep_report.json . || true
+                        - name: Upload build-reports artifact (windows)
+                            uses: actions/upload-artifact@v4
+                            with:
+                                name: license-cve-scan-reports-windows
+                                path: build-reports/**
 
-            - name: Run npm audit (if package.json exists)
-              run: |
-                  if [ -f package.json ]; then
-                      npm audit --audit-level=moderate --json > build-reports/npm_audit_report.json || true
-                  else
-                      echo "No package.json found, skipping npm audit"
-                      echo '{"vulnerabilities": {}}' > build-reports/npm_audit_report.json
-                  fi
+                scan-ubuntu:
 
             - name: Analyze CVE severity and fail if threshold exceeded
               shell: bash
@@ -161,7 +164,7 @@ jobs:
                       with open("build-reports/safety_report.json") as f:
                           data = json.load(f)
                       vulns = data.get("vulnerabilities", []) if isinstance(data, dict) else data
-                      
+
                       critical_count = high_count = medium_count = 0
                       for vuln in (vulns or []):
                           sev = (vuln.get("severity") or vuln.get("vulnerability_severity") or "").lower()
@@ -171,9 +174,9 @@ jobs:
                               high_count += 1
                           elif sev == "medium":
                               medium_count += 1
-                      
+
                       print(f"Safety - Critical: {critical_count}, High: {high_count}, Medium: {medium_count}")
-                      
+
                       # Write summary for bash to read
                       with open("build-reports/severity_summary.txt", "w") as f:
                           f.write(f"safety_critical={critical_count}\n")
@@ -367,6 +370,8 @@ jobs:
               if: env.NOTIFICATION_ENABLED == 'true'
               uses: actions/github-script@v7
               with:
+                  # Use a dedicated PAT from secrets.ISSUE_CREATION_TOKEN when provided, otherwise fall back to the default workflow token
+                  github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
                   script: |
                       const fs = require('fs');
                       const summary = fs.readFileSync('security_summary.md', 'utf8');
