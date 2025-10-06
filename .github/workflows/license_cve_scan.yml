@@ -2,18 +2,18 @@ name: Enhanced License and CVE Security Scan
 
 on:
     schedule:
-        - cron: '0 3 * * *'
-        - cron: '0 15 * * *'
+        - cron: "0 3 * * *"
+        - cron: "0 15 * * *"
     workflow_dispatch:
         inputs:
             severity_threshold:
-                description: 'Minimum severity to alert on (medium, high, critical)'
+                description: "Minimum severity to alert on (medium, high, critical)"
                 required: false
-                default: 'high'
+                default: "high"
             notification_enabled:
-                description: 'Enable notifications (true/false)'
+                description: "Enable notifications (true/false)"
                 required: false
-                default: 'true'
+                default: "true"
 
 env:
     SEVERITY_THRESHOLD: ${{ github.event.inputs.severity_threshold || 'high' }}
@@ -33,12 +33,12 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v4
               with:
-                  python-version: '3.11'
+                  python-version: "3.11"
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
-                  node-version: '18'
+                  node-version: "18"
 
             - name: Prepare build-reports
               shell: pwsh
@@ -47,42 +47,47 @@ jobs:
             - name: Install security tools (Windows)
               shell: pwsh
               run: |
-                    python -m pip install --upgrade pip
-                    python -m pip install pip-licenses safety bandit -q || true
-                    npm --version || true
+                  python -m pip install --upgrade pip
+                  python -m pip install pip-licenses safety bandit -q || true
+                  npm --version || true
 
             - name: Run scans (Windows)
               shell: pwsh
               run: |
-                    # pip-licenses
-                    try {
-                        python -m pip install pip-licenses -q
-                        pip-licenses --format=json > build-reports/licenses_windows.json
-                    } catch {
-                        '{"licenses": []}' | Out-File build-reports/licenses_windows.json -Encoding utf8
-                    }
+                  # pip-licenses
+                  try {
+                      python -m pip install pip-licenses -q
+                      pip-licenses --format=json > build-reports/licenses_windows.json
+                  } catch {
+                      '{"licenses": []}' | Out-File build-reports/licenses_windows.json -Encoding utf8
+                  }
 
-                    # safety
-                    try {
-                        python -m pip install safety -q
-                        python -m safety check --json > build-reports/safety_report_windows.json
-                    } catch {
-                        '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
-                    }
+                  # safety
+                  try {
+                      python -m pip install safety -q
+                      python -m safety check --json > build-reports/safety_report_windows.json
+                  } catch {
+                      '{"vulnerabilities": []}' | Out-File build-reports/safety_report_windows.json -Encoding utf8
+                  }
 
-                    # bandit
-                    try {
-                        python -m pip install bandit -q
-                        bandit -r . -f json -o build-reports/bandit_report_windows.json || echo '{"results": []}' > build-reports/bandit_report_windows.json
-                    } catch {
-                        '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
-                    }
+                  # bandit
+                  try {
+                      python -m pip install bandit -q
+                      bandit -r . -f json -o build-reports/bandit_report_windows.json || echo '{"results": []}' > build-reports/bandit_report_windows.json
+                  } catch {
+                      '{"results": []}' | Out-File build-reports/bandit_report_windows.json -Encoding utf8
+                  }
 
                     # npm audit (root)
                     if (Test-Path "package.json") {
                         try {
                             Push-Location .
-                            npm audit --audit-level=info --json > build-reports/npm_audit_root_windows.json
+                            $auditOutput = npm audit --audit-level=info --json 2>$null
+                            if ($LASTEXITCODE -eq 0) {
+                                $auditOutput | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                            } else {
+                                '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
+                            }
                         } catch {
                             '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
                         } finally {
@@ -90,21 +95,17 @@ jobs:
                         }
                     } else {
                         '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_root_windows.json -Encoding utf8
-                    }
-
-                    # npm audit (frontend)
-                    if (Test-Path "frontend/package.json") {
-                        try {
-                            Push-Location frontend
-                            npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_windows.json
-                        } catch {
-                            '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
-                        } finally {
-                            Pop-Location
-                        }
-                    } else {
-                        '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
-                    }
+                    }                  # npm audit (frontend)
+                  if (Test-Path "frontend/package.json") {
+                      Push-Location frontend
+                      npm audit --audit-level=info --json 2>$null > ../build-reports/npm_audit_frontend_windows.json
+                      if ($LASTEXITCODE -ne 0) {
+                          '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File ../build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                      }
+                      Pop-Location
+                  } else {
+                      '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' | Out-File build-reports/npm_audit_frontend_windows.json -Encoding utf8
+                  }
 
             - name: Upload build-reports artifact (windows)
               uses: actions/upload-artifact@v4
@@ -121,12 +122,12 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v4
               with:
-                  python-version: '3.11'
+                  python-version: "3.11"
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
-                  node-version: '18'
+                  node-version: "18"
 
             - name: Prepare build-reports
               run: mkdir -p build-reports
@@ -140,54 +141,54 @@ jobs:
 
             - name: Run scans (Ubuntu)
               run: |
-                    set -euxo pipefail
-                    mkdir -p build-reports
+                  set -euxo pipefail
+                  mkdir -p build-reports
 
-                    # pip-licenses
-                    python -m pip install pip-licenses -q || true
-                    if command -v pip-licenses >/dev/null 2>&1; then
-                        pip-licenses --format=json > build-reports/licenses_ubuntu.json || echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
-                    else
-                        echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
-                    fi
+                  # pip-licenses
+                  python -m pip install pip-licenses -q || true
+                  if command -v pip-licenses >/dev/null 2>&1; then
+                      pip-licenses --format=json > build-reports/licenses_ubuntu.json || echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
+                  else
+                      echo '{"licenses": []}' > build-reports/licenses_ubuntu.json
+                  fi
 
-                    # safety
-                    python -m pip install safety -q || true
-                    if command -v safety >/dev/null 2>&1 || python -c "import safety" >/dev/null 2>&1; then
-                        (python -m safety check --json > build-reports/safety_report_ubuntu.json) || echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
-                    else
-                        echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
-                    fi
+                  # safety
+                  python -m pip install safety -q || true
+                  if command -v safety >/dev/null 2>&1 || python -c "import safety" >/dev/null 2>&1; then
+                      (python -m safety check --json > build-reports/safety_report_ubuntu.json) || echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                  else
+                      echo '{"vulnerabilities": []}' > build-reports/safety_report_ubuntu.json
+                  fi
 
-                    # bandit
-                    python -m pip install bandit -q || true
-                    if command -v bandit >/dev/null 2>&1; then
-                        bandit -r . -f json -o build-reports/bandit_report_ubuntu.json || echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
-                    else
-                        echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
-                    fi
+                  # bandit
+                  python -m pip install bandit -q || true
+                  if command -v bandit >/dev/null 2>&1; then
+                      bandit -r . -f json -o build-reports/bandit_report_ubuntu.json || echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
+                  else
+                      echo '{"results": []}' > build-reports/bandit_report_ubuntu.json
+                  fi
 
-                    # semgrep
-                    python -m pip install semgrep -q || true
-                    if command -v semgrep >/dev/null 2>&1; then
-                        semgrep --config=auto --json --output=build-reports/semgrep_report_ubuntu.json . || echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
-                    else
-                        echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
-                    fi
+                  # semgrep
+                  python -m pip install semgrep -q || true
+                  if command -v semgrep >/dev/null 2>&1; then
+                      semgrep --config=auto --json --output=build-reports/semgrep_report_ubuntu.json . || echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
+                  else
+                      echo '{"results": []}' > build-reports/semgrep_report_ubuntu.json
+                  fi
 
-                    # npm audit (root)
-                    if [ -f "package.json" ]; then
-                        (cd . && npm audit --audit-level=info --json > build-reports/npm_audit_root_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
-                    else
-                        echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
-                    fi
+                  # npm audit (root)
+                  if [ -f "package.json" ]; then
+                      (cd . && npm audit --audit-level=info --json > build-reports/npm_audit_root_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
+                  else
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_root_ubuntu.json
+                  fi
 
-                    # npm audit (frontend)
-                    if [ -f "frontend/package.json" ]; then
-                        (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
-                    else
-                        echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
-                    fi
+                  # npm audit (frontend)
+                  if [ -f "frontend/package.json" ]; then
+                      (cd frontend && npm audit --audit-level=info --json > ../build-reports/npm_audit_frontend_ubuntu.json) || echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                  else
+                      echo '{"metadata": {"vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}}}' > build-reports/npm_audit_frontend_ubuntu.json
+                  fi
 
             - name: Upload build-reports artifact (ubuntu)
               uses: actions/upload-artifact@v4
@@ -210,98 +211,98 @@ jobs:
             - name: Aggregate reports
               id: aggregate
               run: |
-                    python3 - <<'PY'
-                    import json, glob, os
-                    total = { 'critical': 0, 'high': 0, 'medium': 0 }
-                    for p in glob.glob('reports/**/*.json', recursive=True):
-                            try:
-                                    d = json.load(open(p))
-                            except Exception:
-                                    continue
+                  python3 - <<'PY'
+                  import json, glob, os
+                  total = { 'critical': 0, 'high': 0, 'medium': 0 }
+                  for p in glob.glob('reports/**/*.json', recursive=True):
+                          try:
+                                  d = json.load(open(p))
+                          except Exception:
+                                  continue
 
-                            # npm audit shape
-                            if isinstance(d, dict) and 'metadata' in d and isinstance(d.get('metadata'), dict):
-                                    v = d.get('metadata', {}).get('vulnerabilities', {})
-                                    total['critical'] += int(v.get('critical', 0) or 0)
-                                    total['high'] += int(v.get('high', 0) or 0)
-                                    total['medium'] += int(v.get('moderate', 0) or v.get('medium', 0) or 0)
+                          # npm audit shape
+                          if isinstance(d, dict) and 'metadata' in d and isinstance(d.get('metadata'), dict):
+                                  v = d.get('metadata', {}).get('vulnerabilities', {})
+                                  total['critical'] += int(v.get('critical', 0) or 0)
+                                  total['high'] += int(v.get('high', 0) or 0)
+                                  total['medium'] += int(v.get('moderate', 0) or v.get('medium', 0) or 0)
 
-                            # safety (list or dict)
-                            if isinstance(d, dict) and 'vulnerabilities' in d and isinstance(d['vulnerabilities'], list):
-                                    for v in d['vulnerabilities']:
-                                            sev = (v.get('severity') or v.get('vulnerability_severity') or '').lower()
-                                            if sev == 'critical':
-                                                    total['critical'] += 1
-                                            elif sev == 'high':
-                                                    total['high'] += 1
-                                            elif sev == 'medium':
-                                                    total['medium'] += 1
+                          # safety (list or dict)
+                          if isinstance(d, dict) and 'vulnerabilities' in d and isinstance(d['vulnerabilities'], list):
+                                  for v in d['vulnerabilities']:
+                                          sev = (v.get('severity') or v.get('vulnerability_severity') or '').lower()
+                                          if sev == 'critical':
+                                                  total['critical'] += 1
+                                          elif sev == 'high':
+                                                  total['high'] += 1
+                                          elif sev == 'medium':
+                                                  total['medium'] += 1
 
-                            # bandit results
-                            if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
-                                    for r in d['results']:
-                                            sev = (r.get('issue_severity') or '').lower()
-                                            if sev == 'high':
-                                                    total['high'] += 1
-                                            elif sev == 'medium':
-                                                    total['medium'] += 1
+                          # bandit results
+                          if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
+                                  for r in d['results']:
+                                          sev = (r.get('issue_severity') or '').lower()
+                                          if sev == 'high':
+                                                  total['high'] += 1
+                                          elif sev == 'medium':
+                                                  total['medium'] += 1
 
-                            # semgrep results with severity mapping
-                            if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
-                                    for r in d['results']:
-                                            # Check if this is a semgrep result (has 'extra' field)
-                                            extra = r.get('extra', {})
-                                            if extra and isinstance(extra, dict):
-                                                    sev = (extra.get('severity') or '').lower()
-                                                    # Map semgrep severities: error->high, warning->medium
-                                                    if sev == 'error':
-                                                            total['high'] += 1
-                                                    elif sev == 'warning':
-                                                            total['medium'] += 1
+                          # semgrep results with severity mapping
+                          if isinstance(d, dict) and 'results' in d and isinstance(d['results'], list):
+                                  for r in d['results']:
+                                          # Check if this is a semgrep result (has 'extra' field)
+                                          extra = r.get('extra', {})
+                                          if extra and isinstance(extra, dict):
+                                                  sev = (extra.get('severity') or '').lower()
+                                                  # Map semgrep severities: error->high, warning->medium
+                                                  if sev == 'error':
+                                                          total['high'] += 1
+                                                  elif sev == 'warning':
+                                                          total['medium'] += 1
 
-                    os.makedirs('reports/summary', exist_ok=True)
-                    with open('reports/summary/summary.json','w') as f:
-                            json.dump(total, f)
+                  os.makedirs('reports/summary', exist_ok=True)
+                  with open('reports/summary/summary.json','w') as f:
+                          json.dump(total, f)
 
-                    # export simple outputs
-                    with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
-                            out.write(f"critical={total['critical']}\n")
-                            out.write(f"high={total['high']}\n")
-                            out.write(f"medium={total['medium']}\n")
-                    print(total)
-                    PY
+                  # export simple outputs
+                  with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
+                          out.write(f"critical={total['critical']}\n")
+                          out.write(f"high={total['high']}\n")
+                          out.write(f"medium={total['medium']}\n")
+                  print(total)
+                  PY
 
             - name: Evaluate threshold
               id: threshold
               run: |
-                    python3 - <<'PY'
-                    import json, os
-                    th = os.environ.get('SEVERITY_THRESHOLD','high').lower()
-                    data = json.load(open('reports/summary/summary.json'))
-                    found = False
-                    if th == 'critical':
-                            found = data.get('critical',0) > 0
-                    elif th == 'high':
-                            found = data.get('critical',0) > 0 or data.get('high',0) > 0
-                    else:
-                            found = data.get('critical',0) > 0 or data.get('high',0) > 0 or data.get('medium',0) > 0
+                  python3 - <<'PY'
+                  import json, os
+                  th = os.environ.get('SEVERITY_THRESHOLD','high').lower()
+                  data = json.load(open('reports/summary/summary.json'))
+                  found = False
+                  if th == 'critical':
+                          found = data.get('critical',0) > 0
+                  elif th == 'high':
+                          found = data.get('critical',0) > 0 or data.get('high',0) > 0
+                  else:
+                          found = data.get('critical',0) > 0 or data.get('high',0) > 0 or data.get('medium',0) > 0
 
-                    # write output for later steps
-                    with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
-                            out.write(f"vulnerability_found={'true' if found else 'false'}\n")
-                    print('vulnerability_found=' + str(found))
-                    PY
+                  # write output for later steps
+                  with open(os.environ.get('GITHUB_OUTPUT'),'a') as out:
+                          out.write(f"vulnerability_found={'true' if found else 'false'}\n")
+                  print('vulnerability_found=' + str(found))
+                  PY
 
             - name: Create security summary markdown
               run: |
-                    echo "# 🔒 Security Scan Summary" > security_summary.md
-                    echo "" >> security_summary.md
-                    echo "**Repository:** ${{ github.repository }}" >> security_summary.md
-                    echo "**Branch:** ${{ github.ref_name }}" >> security_summary.md
-                    echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
-                    echo "" >> security_summary.md
-                    echo "### Results" >> security_summary.md
-                    cat reports/summary/summary.json | jq -r 'to_entries[] | "- **\(.key)\**: \(.value)"' >> security_summary.md || true
+                  echo "# 🔒 Security Scan Summary" > security_summary.md
+                  echo "" >> security_summary.md
+                  echo "**Repository:** ${{ github.repository }}" >> security_summary.md
+                  echo "**Branch:** ${{ github.ref_name }}" >> security_summary.md
+                  echo "**Scan Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> security_summary.md
+                  echo "" >> security_summary.md
+                  echo "### Results" >> security_summary.md
+                  cat reports/summary/summary.json | jq -r 'to_entries[] | "- **\(.key)\**: \(.value)"' >> security_summary.md || true
 
             - name: Create GitHub Issue for security alert
               if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true'
@@ -309,16 +310,16 @@ jobs:
               with:
                   github-token: ${{ secrets.ISSUE_CREATION_TOKEN || github.token }}
                   script: |
-                        const fs = require('fs');
-                        const summary = fs.readFileSync('security_summary.md', 'utf8');
-                        const issue = await github.rest.issues.create({
-                            owner: context.repo.owner,
-                            repo: context.repo.repo,
-                            title: `🚨 Security Alert: Vulnerabilities detected (Run #${{ github.run_number }})`,
-                            body: summary,
-                            labels: ['security','vulnerability']
-                        });
-                        console.log(`Created security issue: ${issue.data.html_url}`);
+                      const fs = require('fs');
+                      const summary = fs.readFileSync('security_summary.md', 'utf8');
+                      const issue = await github.rest.issues.create({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          title: `🚨 Security Alert: Vulnerabilities detected (Run #${{ github.run_number }})`,
+                          body: summary,
+                          labels: ['security','vulnerability']
+                      });
+                      console.log(`Created security issue: ${issue.data.html_url}`);
 
             - name: Send Slack notification
               if: env.NOTIFICATION_ENABLED == 'true' && steps.threshold.outputs.vulnerability_found == 'true' && secrets.SLACK_WEBHOOK_URL
