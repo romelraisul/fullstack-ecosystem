@@ -53,7 +53,7 @@ jobs:
             image_ref: ${{ steps.meta.outputs.image_ref }}
             image_digest: ${{ steps.digest.outputs.image_digest }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
             - name: Set image ref
               id: meta
               run: echo "image_ref=${DEFAULT_IMAGE}" >> "$GITHUB_OUTPUT"

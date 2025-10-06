@@ -47,7 +47,7 @@ jobs:
     name: Build, SBOM, Scan, Drift (Legacy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: (Truncated legacy content)
         run: |
           echo "This is a preserved legacy copy; original content contained provenance, cosign attestations, OpenVEX generation, license blocklist, CVSS normalization, digest drift gates, and other extended logic."
