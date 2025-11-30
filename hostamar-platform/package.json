@@ -1,0 +1,39 @@
+{
+  "name": "hostamar-platform",
+  "version": "1.0.0",
+  "description": "Hostamar.com - Cloud Hosting + AI Video Marketing Platform",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p 3001 -H 0.0.0.0",
+    "lint": "next lint",
+    "video:generate": "node scripts/generate-videos.js",
+    "video:queue": "node scripts/video-queue-worker.js",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "next": "14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.294.0",
+    "clsx": "^2.0.0",
+    "tailwind-merge": "^2.1.0",
+    "next-auth": "^4.24.13",
+    "bcrypt": "^5.1.1",
+    "@prisma/client": "^5.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/bcrypt": "^5.0.2",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.35",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.2.18",
+    "prisma": "^5.7.0"
+  }
+}

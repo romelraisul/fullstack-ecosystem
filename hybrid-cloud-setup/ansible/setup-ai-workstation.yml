@@ -1,0 +1,95 @@
+---
+- name: Configure AI & Hybrid Cloud Workstation
+  hosts: windows_vms
+  gather_facts: yes
+  vars:
+    # GCP Information
+    gcp_endpoint_ip: "35.225.196.18"
+    gcp_server_pubkey: "8agku1antDvg2OjjAj6ERNzqRGIxi1fzNbw5681gr10="
+    # Workstation Configuration
+    wg_config_path: "C:\\Program Files\\WireGuard\\Data\\Configurations\\gcp_tunnel.conf"
+    
+  tasks:
+    # -------------------------------------------------------
+    # Step 1: Install Required Software and Tools
+    # -------------------------------------------------------
+    - name: Install Chocolatey (if not present)
+      win_shell: |
+        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+          Set-ExecutionPolicy Bypass -Scope Process -Force;
+         ::SecurityProtocol =::SecurityProtocol -bor 3072;
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        }
+
+    - name: Install WireGuard and AI Tools
+      win_chocolatey:
+        name:
+          - wireguard
+          - git
+          - vscode
+          - python
+          - googlechrome
+        state: present
+
+    # -------------------------------------------------------
+    # Step 2: Auto-generate WireGuard Keys
+    # -------------------------------------------------------
+    - name: Create WireGuard Config Directory
+      win_file:
+        path: "C:\\Program Files\\WireGuard\\Data\\Configurations"
+        state: directory
+
+    - name: Generate Client Private Key (if not present)
+      win_shell: |
+        $keyPath = "C:\\wg_private.key"
+        if (-not (Test-Path $keyPath)) {
+          & "C:\\Program Files\\WireGuard\\wg.exe" genkey | Out-File $keyPath -Encoding ascii -NoNewline
+        }
+        Get-Content $keyPath
+      register: client_private_key_out
+
+    - name: Generate Client Public Key (for GCP)
+      win_shell: |
+        $privKey = Get-Content "C:\\wg_private.key"
+        $privKey | & "C:\\Program Files\\WireGuard\\wg.exe" pubkey
+      register: client_public_key_out
+
+    # -------------------------------------------------------
+    # Step 3: Create Tunnel Configuration File
+    # -------------------------------------------------------
+    - name: Create WireGuard Config File
+      win_copy:
+        dest: "{{ wg_config_path }}"
+        content: |
+          [Interface]
+          PrivateKey = {{ client_private_key_out.stdout | trim }}
+          Address = 10.10.0.2/32
+          DNS = 8.8.8.8
+
+          [Peer]
+          PublicKey = {{ gcp_server_pubkey }}
+          Endpoint = {{ gcp_endpoint_ip }}:51820
+          AllowedIPs = 0.0.0.0/0
+          PersistentKeepalive = 25
+
+    # -------------------------------------------------------
+    # Step 4: Clone AI Agent Code
+    # -------------------------------------------------------
+    - name: Clone Microsoft AI Agent Repo
+      win_shell: |
+        if (-not (Test-Path C:\\AI_Projects)) { New-Item -Path C:\\AI_Projects -ItemType Directory }
+        cd C:\\AI_Projects
+        if (-not (Test-Path ai-agents-for-beginners)) {
+          git clone https://github.com/microsoft/ai-agents-for-beginners.git
+        }
+
+    # -------------------------------------------------------
+    # Final Step: Display Public Key
+    # -------------------------------------------------------
+    - name: SHOW THIS KEY TO USER
+      debug:
+        msg: 
+          - "======================================================="
+          - "SETUP COMPLETE! Now add this Public Key to your GCP Server:"
+          - "{{ client_public_key_out.stdout | trim }}"
+          - "======================================================="

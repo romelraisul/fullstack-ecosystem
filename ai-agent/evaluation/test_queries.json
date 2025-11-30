@@ -1,0 +1,52 @@
+[
+    {
+        "query": "What's the current status of my infrastructure?",
+        "expected_tool": "get_infrastructure_overview",
+        "category": "information_retrieval"
+    },
+    {
+        "query": "Check the status of VM 101",
+        "expected_tool": "check_vm_status",
+        "category": "vm_management"
+    },
+    {
+        "query": "List all active VPN tunnels",
+        "expected_tool": "list_wireguard_tunnels",
+        "category": "network_management"
+    },
+    {
+        "query": "What was the result of the setup-ai-workstation Ansible playbook?",
+        "expected_tool": "check_ansible_playbook_status",
+        "category": "automation_management"
+    },
+    {
+        "query": "I'm getting 'credentials were rejected' error from WinRM. How do I fix it?",
+        "expected_tool": "troubleshoot_winrm",
+        "category": "troubleshooting"
+    },
+    {
+        "query": "Show me the WireGuard tunnel configuration between my Proxmox server and GCP",
+        "expected_tool": "list_wireguard_tunnels",
+        "category": "network_management"
+    },
+    {
+        "query": "My Ansible playbook is failing with WinRM authentication errors. What should I check?",
+        "expected_tool": "troubleshoot_winrm",
+        "category": "troubleshooting"
+    },
+    {
+        "query": "Give me an overview of all my cloud resources",
+        "expected_tool": "get_infrastructure_overview",
+        "category": "information_retrieval"
+    },
+    {
+        "query": "Is the Windows workstation VM running?",
+        "expected_tool": "check_vm_status",
+        "category": "vm_management"
+    },
+    {
+        "query": "How do I enable the Administrator account on Windows for WinRM?",
+        "expected_tool": "troubleshoot_winrm",
+        "category": "troubleshooting"
+    }
+]

@@ -1,0 +1,31 @@
+# VS Code Remote SSH Configuration
+# এই file VS Code-এ সরাসরি use করা যাবে
+
+# Mumbai VM Configuration
+Host mumbai-hostamar
+    HostName mumbai-instance-1.asia-south1-a.YOUR_PROJECT_ID
+    User romelraisul
+    IdentityFile ~/.ssh/google_compute_engine
+    StrictHostKeyChecking no
+    UserKnownHostsFile=/dev/null
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    
+# Alternative: Direct IP (if config-ssh not used)
+Host mumbai-direct
+    HostName <VM_EXTERNAL_IP>
+    User romelraisul
+    IdentityFile ~/.ssh/google_compute_engine
+    Port 22
+    
+# VS Code Remote Settings Recommendations:
+# Add to VS Code settings.json:
+# {
+#   "remote.SSH.connectTimeout": 60,
+#   "remote.SSH.useLocalServer": false,
+#   "remote.SSH.remotePlatform": {
+#     "mumbai-hostamar": "linux"
+#   },
+#   "remote.SSH.enableDynamicForwarding": true,
+#   "remote.SSH.showLoginTerminal": true
+# }

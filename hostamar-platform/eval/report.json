@@ -1,0 +1,11 @@
+[
+  {
+    "file": "gpt-4o.jsonl",
+    "agg": {
+      "count": 3,
+      "hasCTA": 1,
+      "lengthOK": 3,
+      "brandTerms": 3
+    }
+  }
+]

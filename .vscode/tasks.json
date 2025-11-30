@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI Agent: Run",
+      "type": "shell",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-ExecutionPolicy","Bypass",
+        "-File","${workspaceFolder}/ai-agent/run.ps1",
+        "-Mode","agent",
+        "-GithubToken","${input:gh_token}"
+      ],
+      "options": {
+        "shell": {
+          "executable": "C:\\Windows\\System32\\cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Agent: Evaluate",
+      "type": "shell",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-ExecutionPolicy","Bypass",
+        "-File","${workspaceFolder}/ai-agent/run.ps1",
+        "-Mode","evaluate",
+        "-GithubToken","${input:gh_token}"
+      ],
+      "options": {
+        "shell": {
+          "executable": "C:\\Windows\\System32\\cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Agent: Evaluate (No Prompt)",
+      "type": "shell",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy","Bypass",
+        "-File","${workspaceFolder}/ai-agent/run_eval_helper.ps1"
+      ],
+      "options": {
+        "shell": {
+          "executable": "C:\\Windows\\System32\\cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "gh_token",
+      "type": "promptString",
+      "description": "Enter your GitHub Personal Access Token",
+      "password": true
+    }
+  ]
+}

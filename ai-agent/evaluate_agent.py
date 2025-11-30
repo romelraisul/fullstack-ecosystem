@@ -12,6 +12,8 @@ import json
 import asyncio
 from typing import Dict, List, Any
 
+from openai import AsyncOpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from azure.ai.evaluation import evaluate, RelevanceEvaluator, CoherenceEvaluator, OpenAIModelConfiguration
 
 
@@ -63,21 +65,35 @@ async def collect_agent_responses(queries_file: str, output_file: str):
     with open(queries_file, 'r') as f:
         test_queries = json.load(f)
     
-    # Get Foundry endpoint and key from environment
+    # Get Foundry endpoint from environment
     foundry_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not foundry_endpoint:
+        raise ValueError("AZURE_OPENAI_ENDPOINT not set in environment")
+
+    # Use Azure AD authentication for Foundry
+    # Try API key first (if set), otherwise use DefaultAzureCredential
     foundry_key = os.getenv("AZURE_OPENAI_KEY")
-    if not foundry_endpoint or not foundry_key:
-        raise ValueError("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_KEY not set in environment")
+    if foundry_key:
+        print("Using API key authentication for Foundry agent.")
+        openai_client = AsyncOpenAI(
+            base_url=foundry_endpoint,
+            api_key=foundry_key,
+        )
+    else:
+        print("Using Azure AD authentication for Foundry agent.")
+        token_provider = get_bearer_token_provider(
+            DefaultAzureCredential(),
+            "https://cognitiveservices.azure.com/.default"
+        )
+        openai_client = AsyncOpenAI(
+            base_url=foundry_endpoint,
+            azure_ad_token_provider=token_provider,
+        )
 
-    # Initialize agent
-    openai_client = AsyncOpenAI(
-        base_url=foundry_endpoint,
-        api_key=foundry_key,
-    )
-
+    model_id = os.getenv("MODEL_DEPLOYMENT_NAME") or os.getenv("AZURE_OPENAI_MODEL") or "gpt-4o-mini"
     chat_client = OpenAIChatClient(
         async_client=openai_client,
-        model_id="gpt-4o-mini"  # Update if your Foundry model name differs
+        model_id=model_id
     )
     
     agent = ChatAgent(
@@ -164,19 +180,40 @@ def run_evaluation(data_file: str, output_path: str = "./evaluation_results"):
     # Prefer Foundry (Azure) credentials; fall back to GitHub Models if not present.
     foundry_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     foundry_key = os.getenv("AZURE_OPENAI_KEY")
-    foundry_model = os.getenv("AZURE_OPENAI_MODEL", "gpt-4o-mini")
+    foundry_model = os.getenv("MODEL_DEPLOYMENT_NAME") or os.getenv("AZURE_OPENAI_MODEL") or "gpt-4o-mini"
 
-    if foundry_endpoint and foundry_key:
-        model_config = OpenAIModelConfiguration(
-            type="openai",
-            model=foundry_model,
-            base_url=foundry_endpoint,
-            api_key=foundry_key,
-        )
+    if foundry_endpoint:
+        if foundry_key:
+            print("Using API key authentication for evaluators.")
+            model_config = OpenAIModelConfiguration(
+                type="openai",
+                model=foundry_model,
+                base_url=foundry_endpoint,
+                api_key=foundry_key,
+            )
+        else:
+            print("Using Azure AD authentication for evaluators.")
+            # Azure AI Evaluation SDK requires credentials via AzureDefaultCredential
+            from azure.identity import DefaultAzureCredential
+            model_config = {
+                "azure_endpoint": foundry_endpoint,
+                "azure_deployment": foundry_model,
+                "api_version": "2024-05-01-preview",
+                "azure_ad_token_provider": get_bearer_token_provider(
+                    DefaultAzureCredential(),
+                    "https://cognitiveservices.azure.com/.default"
+                )
+            }
     else:
+        # Support multiple GitHub tokens via GITHUB_TOKENS (comma-separated)
         github_token = os.getenv("GITHUB_TOKEN")
         if not github_token:
-            raise ValueError("No Foundry credentials (AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_KEY) or GITHUB_TOKEN set in environment")
+            tokens_combined = os.getenv("GITHUB_TOKENS", "")
+            tokens = [t.strip() for t in tokens_combined.split(",") if t.strip()]
+            github_token = tokens[0] if tokens else None
+
+        if not github_token:
+            raise ValueError("No Foundry credentials (AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_KEY) or GitHub token(s) (GITHUB_TOKEN/GITHUB_TOKENS) set in environment")
 
         model_config = OpenAIModelConfiguration(
             type="openai",

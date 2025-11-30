@@ -1,0 +1,12 @@
+[Unit]
+Description=Hostamar TLS Expiry Check Timer (daily at 03:00)
+Requires=hostamar-tls-expiry-check.service
+
+[Timer]
+OnCalendar=daily
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

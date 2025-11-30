@@ -1,0 +1,43 @@
+# Microsoft Foundry Pipeline Template (Conceptual)
+# Use in Microsoft Foundry Project Pipelines to orchestrate install/build/eval.
+
+version: 1
+
+variables:
+  AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: "${{ env.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}"
+  EVAL_MODELS: "${{ env.EVAL_MODELS }}"
+
+stages:
+  - name: install
+    steps:
+      - run: npm config set registry https://registry.npmjs.org/
+        workingDirectory: ./
+      - run: npm install
+        workingDirectory: ./
+      - run: npm install
+        workingDirectory: ./eval
+
+  - name: build
+    steps:
+      - run: npm run build
+        workingDirectory: ./
+
+  - name: dev-preview
+    # For local preview environments only; not for production.
+    steps:
+      - run: npm run dev
+        workingDirectory: ./
+        # Note: This is a long-running step intended for preview. In production, use `next start` after build.
+
+  - name: evaluate
+    env:
+      AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: "${{ env.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}"
+      EVAL_MODELS: "${{ env.EVAL_MODELS }}"
+    steps:
+      - run: npm run eval:run
+        workingDirectory: ./eval
+      - run: npm run eval:metrics
+        workingDirectory: ./eval
+      - run: |
+          echo "Evaluation outputs:" && dir ./eval/outputs && type ./eval/report.json
+        workingDirectory: ./

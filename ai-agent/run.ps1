@@ -2,6 +2,7 @@ param(
     [ValidateSet('agent','evaluate')]
     [string]$Mode = 'agent',
     [string]$GithubToken,
+    [int]$GithubTokenIndex = 0,
     [string]$FoundryEndpoint,
     [string]$FoundryKey,
     [switch]$Bootstrap
@@ -57,6 +58,23 @@ if ($FoundryEndpoint) {
 }
 if ($FoundryKey) {
     $env:AZURE_OPENAI_KEY = $FoundryKey
+}
+
+# 3b. Support multiple GitHub tokens via GITHUB_TOKENS (comma-separated)
+if (-not $GithubToken) {
+    $tokensCombined = $env:GITHUB_TOKENS
+    if ($tokensCombined) {
+        $tokens = $tokensCombined -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        if ($tokens.Length -gt 0) {
+            if ($GithubTokenIndex -lt 0 -or $GithubTokenIndex -ge $tokens.Length) {
+                Write-Warning "GithubTokenIndex $GithubTokenIndex is out of range (0..$($tokens.Length-1)); defaulting to 0."
+                $GithubTokenIndex = 0
+            }
+            $GithubToken = $tokens[$GithubTokenIndex]
+            $env:GITHUB_TOKEN = $GithubToken
+            Write-Host "Selected GitHub token index $GithubTokenIndex from GITHUB_TOKENS." -ForegroundColor Yellow
+        }
+    }
 }
 
 # Print the active model configuration that will be used by the Python scripts

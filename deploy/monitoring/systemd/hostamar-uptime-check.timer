@@ -1,0 +1,11 @@
+[Unit]
+Description=Hostamar Uptime Check Timer (every 5 minutes)
+Requires=hostamar-uptime-check.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

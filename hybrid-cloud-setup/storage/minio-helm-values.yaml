@@ -1,0 +1,10 @@
+# This file contains the Helm values for deploying MinIO (S3-compatible storage).
+
+mode: standalone
+persistence:
+  enabled: true
+  size: 4Ti
+  storageClass: "local-zfs" # A StorageClass pointing to your ZFS pool
+ingress:
+  enabled: true
+  hostname: "s3.your-domain.com"

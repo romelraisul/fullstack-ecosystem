@@ -1,0 +1,31 @@
+{
+  "remote.SSH.connectTimeout": 60,
+  "remote.SSH.useLocalServer": false,
+  "remote.SSH.showLoginTerminal": true,
+  "remote.SSH.enableDynamicForwarding": true,
+  "remote.SSH.remotePlatform": {
+    "mumbai-instance-1.asia-south1-a.*": "linux",
+    "mumbai-hostamar": "linux"
+  },
+  "remote.SSH.defaultExtensions": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "prisma.prisma",
+    "bradlc.vscode-tailwindcss"
+  ],
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/dist/**": true,
+    "**/build/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/.git": true
+  }
+}

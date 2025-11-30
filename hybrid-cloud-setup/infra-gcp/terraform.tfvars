@@ -1,0 +1,6 @@
+gcp_project_id    = "arafat-468807"
+server_private_key = "EOuT8c5vOtemy/3HgdcIQx8FiSLavjR69iNpSKzBSXI="
+server_public_key  = "9UFjDFzNCCidUTa3sTK6tOB6wgGD0iBR0ueLaOb8hRw="
+client_public_key  = "cqF03It3+STfVWr7wZMlGa2e9sNFWy901RlcZ6/nd1o="
+ssh_public_key     = "your_ssh_public_key"
+vm1_public_key     = "dummy"

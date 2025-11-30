@@ -1,0 +1,5 @@
+{
+    "chat.agent.maxRequests": 250,
+    "geminicodeassist.project": "arafat-468807",
+    "terminal.integrated.defaultProfile.windows": "Windows PowerShell"
+}

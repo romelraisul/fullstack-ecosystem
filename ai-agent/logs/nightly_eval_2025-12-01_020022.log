@@ -1,0 +1,31 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20251201020024
+Username: HOSTAMAR-COM\romel
+RunAs User: HOSTAMAR-COM\romel
+Configuration Name: 
+Machine: HOSTAMAR-COM (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\romel\OneDrive\Documents\aiauto\ai-agent\nightly_eval_wrapper.ps1
+Process ID: 2484
+PSVersion: 5.1.26100.7019
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7019
+BuildVersion: 10.0.26100.7019
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is G:\My Drive\Automations\ai-agent\logs\nightly_eval_2025-12-01_020022.log
+========================================
+Nightly AI Agent Evaluation
+Started: 2025-12-01 02:00:24
+========================================
+========================================
+Evaluation failed: The term 'G:\My Drive\Automations\ai-agent\run_eval_helper.ps1' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+Finished: 2025-12-01 02:00:25
+========================================
+**********************
+Windows PowerShell transcript end
+End time: 20251201020025
+**********************

@@ -1,0 +1,14 @@
+#cloud-config
+# This script runs on the GCP gateway VM at first boot.
+# It installs and configures WireGuard, Nginx, and FRP.
+
+package_update: true
+package_upgrade: true
+packages:
+  - wireguard
+  - nginx
+  - frp # Assuming frp is available in the default repos or a custom one.
+
+runcmd:
+  # Add commands to configure WireGuard, Nginx, and FRP server here.
+  - echo "Cloud-init setup complete." > /tmp/cloud-init-status.txt

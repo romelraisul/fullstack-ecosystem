@@ -1,0 +1,14 @@
+[Unit]
+Description=Hostamar Uptime Health Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hostamar-uptime-check.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hostamar-uptime
+
+[Install]
+WantedBy=multi-user.target

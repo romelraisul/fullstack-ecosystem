@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User/Customer Model
+model Customer {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String
+  phone         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  business      Business?
+  subscriptions Subscription[]
+  videos        Video[]
+  services      Service[]
+}
+
+// Business Profile
+model Business {
+  id            String   @id @default(cuid())
+  customerId    String   @unique
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  name          String
+  industry      String
+  description   String?
+  website       String?
+  logo          String?  // URL to uploaded logo
+  brandColor    String   @default("#3B82F6")
+  
+  // Social Media
+  facebook      String?
+  instagram     String?
+  youtube       String?
+  tiktok        String?
+  
+  // Video Preferences
+  videoFrequency String  @default("daily") // daily, weekly
+  videoTopics    String? // JSON array of preferred topics
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Subscription Plans
+model Subscription {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  plan          String   // starter, business, enterprise
+  status        String   @default("active") // active, paused, cancelled
+  
+  // Features
+  videosPerMonth Int     @default(10)
+  storageGB     Int      @default(5)
+  
+  // Billing
+  price         Float
+  currency      String   @default("BDT")
+  billingCycle  String   @default("monthly")
+  nextBillingDate DateTime
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Generated Videos
+model Video {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  title         String
+  description   String?
+  script        String   @db.Text
+  
+  // Video Details
+  duration      Int      // seconds
+  format        String   @default("mp4")
+  resolution    String   @default("1080p")
+  fileSize      Int?     // bytes
+  
+  // Storage
+  url           String   // MinIO/S3 URL
+  thumbnailUrl  String?
+  
+  // Metadata
+  topic         String
+  language      String   @default("bn") // bn, en
+  status        String   @default("processing") // processing, ready, failed
+  
+  // Analytics
+  downloads     Int      @default(0)
+  views         Int      @default(0)
+  shares        Int      @default(0)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([customerId, status])
+}
+
+// Services (VPS, RDP, etc.)
+model Service {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  type          String   // vps, rdp, web-hosting, storage
+  name          String
+  status        String   @default("active") // active, suspended, terminated
+  
+  // Service Details (JSON for flexibility)
+  specs         String   @db.Text // JSON: {cpu: 2, ram: 4, storage: 40}
+  credentials   String   @db.Text // Encrypted JSON
+  
+  // Server Assignment
+  serverIp      String?
+  serverId      String?  // Proxmox VM ID or GCP instance name
+  
+  // Billing
+  price         Float
+  billingCycle  String   @default("monthly")
+  
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime?
+  updatedAt     DateTime @updatedAt
+  
+  @@index([customerId, status])
+}
+
+// Video Generation Queue
+model VideoQueue {
+  id            String   @id @default(cuid())
+  customerId    String
+  
+  topic         String
+  priority      Int      @default(5)
+  status        String   @default("pending") // pending, processing, completed, failed
+  
+  // Error handling
+  attempts      Int      @default(0)
+  maxAttempts   Int      @default(3)
+  error         String?  @db.Text
+  
+  // Result
+  videoId       String?
+  
+  createdAt     DateTime @default(now())
+  processedAt   DateTime?
+  
+  @@index([status, priority])
+}
+
+// System Logs
+model ActivityLog {
+  id            String   @id @default(cuid())
+  customerId    String?
+  
+  action        String   // login, video_generated, service_created, etc.
+  description   String   @db.Text
+  metadata      String?  @db.Text // JSON
+  
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([customerId, createdAt])
+}

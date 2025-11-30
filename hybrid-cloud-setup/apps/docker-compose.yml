@@ -1,0 +1,9 @@
+# This docker-compose file is for hosting Telegram bots or other lightweight applications.
+
+services:
+  telegram-bot:
+    image: python:3.9-slim
+    command: python bot.py
+    volumes:
+      - ./bot_code:/app
+    restart: unless-stopped

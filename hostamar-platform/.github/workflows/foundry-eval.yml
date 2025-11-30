@@ -1,0 +1,47 @@
+name: Foundry Evaluation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'eval/**'
+
+jobs:
+  eval:
+    runs-on: windows-latest
+    env:
+      AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
+      EVAL_MODELS: ${{ secrets.EVAL_MODELS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps (eval)
+        working-directory: eval
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm install
+
+      - name: Run evaluation
+        working-directory: eval
+        run: |
+          npm run eval:run
+
+      - name: Compute metrics
+        working-directory: eval
+        run: |
+          npm run eval:metrics
+
+      - name: Upload outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-outputs
+          path: |
+            eval/outputs
+            eval/report.json

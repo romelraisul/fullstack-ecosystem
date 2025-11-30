@@ -1,0 +1,19 @@
+# This file defines the GitHub Actions workflow for CI/CD.
+# It orchestrates the deployment of the entire hybrid cloud infrastructure.
+
+name: Hybrid Cloud Deploy
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      # Add steps for authenticating to GCP and Proxmox, then running terraform apply.

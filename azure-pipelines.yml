@@ -1,0 +1,114 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  vmId: '104'
+
+stages:
+- stage: BuildDeploy
+  displayName: Hybrid CI/CD
+  jobs:
+  - job: run
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: Azure login via service connection
+      inputs:
+        azureSubscription: 'ServiceConnectionName'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          echo "Logged in"
+
+    - task: Bash@3
+      displayName: Fetch secrets from Key Vault
+      inputs:
+        targetType: 'inline'
+        script: |
+          FOUNDRYAPIKEY=$(az keyvault secret show --vault-name $(KEYVAULT_NAME) --name foundry-api-key --query value -o tsv)
+          echo "##vso[task.setvariable variable=FOUNDRYAPIKEY;issecret=true]$FOUNDRYAPIKEY"
+
+    - task: Bash@3
+      displayName: Terraform apply infra
+      inputs:
+        targetType: 'inline'
+        script: |
+          cd infra
+          terraform init
+          terraform apply -auto-approve
+
+    - task: Bash@3
+      displayName: Proxmox VM lifecycle control
+      inputs:
+        targetType: 'inline'
+        script: |
+          AUTH_HEADER="PVEAPIToken=$(PROXMOXUSER)!token=$(PROXMOXTOKEN)"
+          curl -ks -H "Authorization: ${AUTH_HEADER}" \
+            -X POST https://$(PROXMOX_HOST)/api2/json/nodes/pve/qemu/$(vmId)/status/stop || true
+          curl -ks -H "Authorization: ${AUTH_HEADER}" \
+            -X POST https://$(PROXMOX_HOST)/api2/json/nodes/pve/qemu/$(vmId)/unlock || true
+
+    - task: Bash@3
+      displayName: Build & push API image to ACR
+      inputs:
+        targetType: 'inline'
+        script: |
+          az acr login --name $(ACR_NAME)
+          docker build -t $(ACR_NAME).azurecr.io/hybrid-api:$(Build.SourceVersion) ./api
+          docker push $(ACR_NAME).azurecr.io/hybrid-api:$(Build.SourceVersion)
+
+    - task: AzureCLI@2
+      displayName: AKS deploy
+      inputs:
+        azureSubscription: 'ServiceConnectionName'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az aks get-credentials -g $(AKSRG) -n $(AKSCLUSTER) --overwrite-existing
+          kubectl apply -f manifests/deployment.yaml
+          kubectl set image deployment/hybrid-api hybrid-api=$(ACR_NAME).azurecr.io/hybrid-api:$(Build.SourceVersion)
+          kubectl rollout status deployment/hybrid-api --timeout=180s
+
+    - task: Bash@3
+      displayName: Publish to Foundry Marketplace
+      inputs:
+        targetType: 'inline'
+        script: |
+          python3 -m pip install -r scripts/requirements.txt
+          python3 scripts/foundrypublishapi.py \
+            --workspace $(FOUNDRY_WORKSPACE) \
+            --spec ./manifests/api-spec.yaml \
+            --image "$(ACR_NAME).azurecr.io/hybrid-api:$(Build.SourceVersion)" \
+            --key "$(FOUNDRYAPIKEY)"
+
+    - task: Bash@3
+      displayName: Configure Azure Monitor alerts
+      inputs:
+        targetType: 'inline'
+        script: |
+          az monitor metrics alert create \
+            -g $(AKS_RG) \
+            -n "api-availability" \
+            --condition "avg Availability < 99 over 30m" \
+            --scopes "/subscriptions/$(AZURESUBSCRIPTIONID)/resourceGroups/$(AKSRG)/providers/Microsoft.ContainerService/managedClusters/$(AKSCLUSTER)" \
+            --action-group $(ACTIONGROUPID)
+
+    - task: Bash@3
+      displayName: DR backup snapshots to Blob
+      inputs:
+        targetType: 'inline'
+        script: |
+          tar -czf k8s-snapshot.tar.gz manifests
+          az storage blob upload --account-name $(DRSTORAGEACCOUNT) --container-name $(DR_CONTAINER) --file k8s-snapshot.tar.gz --name "aks/$(date -u +%Y%m%dT%H%M%SZ)-k8s-snapshot.tar.gz"
+
+    - task: PublishBuildArtifacts@1
+      displayName: Publish compliance log
+      inputs:
+        PathtoPublish: 'compliance.log'
+        ArtifactName: 'compliance'
+        publishLocation: 'Container'

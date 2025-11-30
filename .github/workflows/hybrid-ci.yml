@@ -1,0 +1,173 @@
+name: Hybrid Cloud VM + AI Foundry CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  AZURESUBSCRIPTIONID: ${{ secrets.AZURESUBSCRIPTIONID }}
+  AZURETENANTID: ${{ secrets.AZURETENANTID }}
+  AZURECLIENTID: ${{ secrets.AZURECLIENTID }}
+  PROXMOX_HOST: ${{ secrets.PROXMOXHOST }}
+  PROXMOX_USER: ${{ secrets.PROXMOXUSER }}
+  PROXMOX_TOKEN: ${{ secrets.PROXMOXTOKEN }}
+  KEYVAULT_NAME: ${{ secrets.KEYVAULTNAME }}
+  FOUNDRY_WORKSPACE: ${{ secrets.FOUNDRYWORKSPACE }}
+  AKSRG: ${{ secrets.AKSRG }}
+  AKSCLUSTER: ${{ secrets.AKSCLUSTER }}
+  DRSTORAGEACCOUNT: ${{ secrets.DRSTORAGEACCOUNT }}
+  DR_CONTAINER: ${{ secrets.DRCONTAINER }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 1) Authenticate to Azure
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 2) Key Vault: pull secrets for local/Foundry ops
+      - name: Fetch secrets from Key Vault
+        uses: azure/get-keyvault-secrets@v1
+        with:
+          keyvault: ${{ env.KEYVAULT_NAME }}
+          secrets: |
+            proxmox-api-token
+            foundry-api-key
+            wireguard-config
+          exportToEnvironment: true
+
+      # 3) Compliance pre-check: log change metadata
+      - name: Compliance log start
+        run: |
+          echo "ts=$(date -u +%FT%TZ) actor=${{ github.actor }} sha=${{ github.sha }}" >> compliance.log
+          echo "action=deploy workspace=${{ env.FOUNDRY_WORKSPACE }}" >> compliance.log
+
+      # 4) Infra deploy (Foundry workspace, AKS, Monitor, Storage, Key Vault)
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform plan
+        working-directory: infra
+        run: terraform plan -out tfplan
+
+      - name: Terraform apply
+        working-directory: infra
+        run: terraform apply -auto-approve tfplan
+
+      # 5) Proxmox VM lifecycle safety sweep (stop/unlock/destroy purge if flagged)
+      - name: VM lifecycle control (Proxmox)
+        env:
+          VMID: "104" # override via repo var or Key Vault secret if needed
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl jq
+          AUTH_HEADER="PVEAPIToken=${PROXMOX_USER}!token=${PROXMOX_TOKEN}"
+          # Stop VM gracefully via API (ACPI/QMP) fallback unlock
+          curl -ks -H "Authorization: ${AUTH_HEADER}" \
+            -X POST "https://${PROXMOX_HOST}/api2/json/nodes/pve/qemu/${VMID}/status/stop" || true
+          # Unlock to clear monitor/lock errors
+          curl -ks -H "Authorization: ${AUTH_HEADER}" \
+            -X POST "https://${PROXMOX_HOST}/api2/json/nodes/pve/qemu/${VMID}/unlock" || true
+          # Optional force purge on label toggle
+          if [ "${{ inputs.purge_vm }}" = "true" ]; then
+            curl -ks -H "Authorization: ${AUTH_HEADER}" \
+              -X DELETE "https://${PROXMOX_HOST}/api2/json/nodes/pve/qemu/${VMID}?purge=1" || true
+          fi
+
+      # 6) Build & push container for API to AKS
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container
+        run: |
+          docker build -t ${{ env.AKSRG }}.azurecr.io/hybrid-api:${{ github.sha }} ./api
+
+      - name: Azure Container Registry login
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ env.AKSRG }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Push image
+        run: |
+          docker push ${{ env.AKSRG }}.azurecr.io/hybrid-api:${{ github.sha }}
+
+      # 7) AKS context and deploy
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials -g $AKSRG -n $AKSCLUSTER --overwrite-existing
+
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f manifests/deployment.yaml
+          kubectl set image deployment/hybrid-api hybrid-api=${{ env.AKSRG }}.azurecr.io/hybrid-api:${{ github.sha }}
+          kubectl rollout status deployment/hybrid-api --timeout=180s
+
+      # 8) Foundry API registration/publishing
+      - name: Publish API to AI Foundry Marketplace
+        run: |
+          python3 -m pip install -r scripts/requirements.txt
+          python3 scripts/foundrypublishapi.py \
+            --workspace "$FOUNDRY_WORKSPACE" \
+            --spec ./manifests/api-spec.yaml \
+            --image "${{ env.AKSRG }}.azurecr.io/hybrid-api:${{ github.sha }}" \
+            --key "$foundry-api-key"
+
+      # 9) Monitoring: enable diagnostic + alert rules
+      - name: Configure Azure Monitor
+        run: |
+          az monitor log-analytics workspace list -g $AKSRG >/dev/null 2>&1 || true
+          az monitor metrics alert create \
+            -g $AKSRG \
+            -n "api-availability" \
+            --condition "avg Availability < 99 over 30m" \
+            --scopes "/subscriptions/${{ env.AZURESUBSCRIPTIONID }}/resourceGroups/${AKSRG}/providers/Microsoft.ContainerService/managedClusters/${AKSCLUSTER}" \
+            --action-group ${{ secrets.ACTIONGROUPID }} || true
+
+      # 10) DR: backup VM and AKS state to Blob
+      - name: DR backup
+        run: |
+          if [ -f ./artifacts/vm-backups/latest.tar.gz ]; then
+            az storage blob upload \
+              --account-name $DRSTORAGEACCOUNT \
+              --container-name $DR_CONTAINER \
+              --file ./artifacts/vm-backups/latest.tar.gz \
+              --name "vm/$(date -u +%Y%m%dT%H%M%SZ)-latest.tar.gz"
+          fi
+          tar -czf k8s-snapshot.tar.gz manifests
+          az storage blob upload \
+            --account-name $DRSTORAGEACCOUNT \
+            --container-name $DR_CONTAINER \
+            --file k8s-snapshot.tar.gz \
+            --name "aks/$(date -u +%Y%m%dT%H%M%SZ)-k8s-snapshot.tar.gz"
+
+      # 11) Compliance: collect logs and publish artifact
+      - name: Compliance log finalize
+        run: |
+          echo "apply_status=success" >> compliance.log
+
+      - name: Upload compliance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-log
+          path: compliance.log
+
+      # 12) Changelog bump
+      - name: Update Changelog
+        run: |
+          mkdir -p docs
+          echo "## ${GITHUB_SHA} - $(date -u +%F) - Deploy" >> docs/Changelog.md
+          echo "- Publish API image and marketplace entry" >> docs/Changelog.md
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add docs/Changelog.md
+          git commit -m "Changelog update for ${GITHUB_SHA}" || echo "No changes"
+          git push || true

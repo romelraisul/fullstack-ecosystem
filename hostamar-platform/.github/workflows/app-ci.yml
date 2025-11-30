@@ -1,0 +1,39 @@
+name: Hostamar App CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'eval/**'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps (app)
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm install
+
+      - name: Build
+        run: |
+          npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: |
+            .next
+            next.config.js
+            package.json
+            package-lock.json

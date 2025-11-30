@@ -1,0 +1,14 @@
+[Unit]
+Description=Hostamar TLS Certificate Expiry Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hostamar-tls-expiry-check.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hostamar-tls
+
+[Install]
+WantedBy=multi-user.target

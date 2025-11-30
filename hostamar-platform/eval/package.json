@@ -1,0 +1,15 @@
+{
+  "name": "hostamar-eval",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Evaluation runner for Microsoft Foundry experiments",
+  "scripts": {
+    "eval:run": "node run.js",
+    "eval:metrics": "node metrics.js"
+  },
+  "dependencies": {
+    "@azure/ai-projects": "^1.0.0-beta.5",
+    "@azure/identity": "^4.0.0",
+    "dotenv": "^16.4.5"
+  }
+}

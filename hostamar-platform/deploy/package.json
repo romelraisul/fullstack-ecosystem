@@ -1,0 +1,21 @@
+{
+  "name": "hostamar-platform-deployment",
+  "version": "1.0.0",
+  "description": "VS Code AI Agent configuration for GCP Mumbai VM deployment",
+  "scripts": {
+    "deploy": "bash ./gcp-mumbai-deploy.sh",
+    "deploy:nginx": "ssh $VM_HOST 'cd ~/hostamar-platform/deploy && ./nginx-setup.sh'",
+    "deploy:update": "rsync -avzP --exclude 'node_modules' --exclude '.git' ../ $VM_HOST:~/hostamar-platform/ && ssh $VM_HOST 'cd ~/hostamar-platform && npm run build && pm2 restart hostamar'",
+    "remote:logs": "ssh $VM_HOST 'pm2 logs hostamar --lines 100'",
+    "remote:status": "ssh $VM_HOST 'pm2 status'",
+    "remote:restart": "ssh $VM_HOST 'pm2 restart hostamar'",
+    "remote:ssh": "ssh $VM_HOST",
+    "remote:backup": "ssh $VM_HOST 'cd ~/hostamar-platform && tar -czf ../backup-$(date +%Y%m%d-%H%M%S).tar.gz .'"
+  },
+  "config": {
+    "vm_name": "mumbai-instance-1",
+    "vm_zone": "asia-south1-a",
+    "vm_user": "romelraisul",
+    "project_id": "YOUR_PROJECT_ID"
+  }
+}
