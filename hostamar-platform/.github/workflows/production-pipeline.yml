@@ -1,0 +1,72 @@
+name: Production Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Audit Tools
+        run: npm install -g @lhci/cli lychee-action
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Unit Tests
+        run: npm test
+        continue-on-error: false
+
+      - name: Check Broken Links
+        uses: lycheeverse/lychee-action@v1.9.0
+        with:
+          args: --verbose --no-progress './**/*.md' './**/*.tsx'
+          fail: true
+
+      - name: Lighthouse Performance Audit
+        run: |
+          # Start server in background
+          npm start &
+          sleep 10
+          # Run audit
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+  deploy-staging:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Deploy to Staging
+        run: echo "🚀 Deploying to Staging Environment... (Mock)"
+        # Add actual deployment steps here (e.g., SSH to Staging VM)
+
+  deploy-production:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to Production
+        run: echo "🚀 Deploying to Production Environment..."
+      
+      - name: Trigger Deployment Webhook
+        run: |
+          # Example: Triggering the GCP deployment script remotely via SSH
+          # ssh -i key user@host "bash deploy.sh"
+          echo "Production Deployment Triggered."
