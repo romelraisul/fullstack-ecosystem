@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcrypt'
 import { prisma } from '@/lib/prisma'
 import { sendWelcomeEmail } from '@/lib/email'
+import { trackEvent } from '@/lib/analytics'
 
 // Enhanced signup handler with better validation and error reporting
 export async function POST(request: Request) {
@@ -59,6 +60,10 @@ export async function POST(request: Request) {
         data,
         include: { business: true }
       })
+
+      // Track signup event
+      trackEvent(customer.id, 'SIGNUP', { email: customer.email, name: customer.name })
+
     } catch (err: any) {
       // Prisma specific error handling
       if (err?.code === 'P2002') {

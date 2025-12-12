@@ -1,9 +1,23 @@
+
 import NextAuth, { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcrypt'
 import { prisma } from '@/lib/prisma'
+import { trackEvent } from '@/lib/analytics'
 
-export const authOptions: NextAuthOptions = {
+// Extend NextAuth Session type to allow user.id
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    }
+  }
+}
+
+const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -29,6 +43,9 @@ export const authOptions: NextAuthOptions = {
         if (!isValid) {
           return null
         }
+
+        // Track successful login event
+        trackEvent(customer.id, 'LOGIN', { email: customer.email })
 
         return {
           id: customer.id,
