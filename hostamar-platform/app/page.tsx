@@ -34,7 +34,7 @@ export default function HomePage() {
       <section className="container mx-auto px-4 py-20 text-center">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-            আপনার ব্যবসা সেটআপ করুন + প্রতিদিন পান মার্কেটিং ভিডিও
+            AI-Powered Cloud Hosting & Automated Marketing
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
             হোস্টিং সার্ভিস + AI-powered মার্কেটিং ভিডিও। আপনার ব্যবসার জন্য প্রতি সপ্তাহে 10+ professional videos তৈরি হবে!
