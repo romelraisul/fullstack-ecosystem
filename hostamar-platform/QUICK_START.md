@@ -1,53 +1,372 @@
-# 🚀 Hostamar Platform - Quick Start Guide
+# 🚀 Hostamar Quick Start Guide
 
-## আপনার জন্য কি তৈরি হয়েছে:
-
-### ✅ **1. Complete Next.js Application**
-- Landing page with pricing
-- Customer signup/login system
-- Video generation service
-- Database schema (PostgreSQL)
-- MinIO/S3 integration
-- AI-powered marketing automation
-
-### ✅ **2. Video Marketing System**
-- AI script generation (GPT-4)
-- Automated video composition
-- Voice-over support
-- Social media ready formats
-- Customer branding
-
-### ✅ **3. Business Infrastructure**
-- Customer management
-- Subscription handling
-- Service provisioning framework
-- Analytics tracking
+**Project Status**: 70% MVP Complete | Ready for Demo/Testing  
+**Live URL**: http://34.47.163.149:3001
 
 ---
 
-## 🎯 Quick Deploy (Get Running in 30 Minutes!)
+## ⚡ 5-Minute Setup
 
-### **Step 1: Install Dependencies**
-
-```powershell
-cd c:\Users\romel\OneDrive\Documents\aiauto\hostamar-platform
-npm install
+### For Linux/Mac:
+```bash
+cd hostamar-platform
+chmod +x setup.sh
+./setup.sh
+npm run dev
 ```
 
-### **Step 2: Setup Environment Variables**
+### For Windows (PowerShell as Admin):
+```powershell
+cd hostamar-platform
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+.\setup-windows.ps1
+npm run dev
+```
 
-Create `.env.local` file:
+Then open http://localhost:3000 in your browser.
+
+---
+
+## 🔑 Essential Environment Variables
+
+Create `.env.local` in the project root:
 
 ```env
-# Database (Use your GCP PostgreSQL or local)
-DATABASE_URL="postgresql://user:password@localhost:5432/hostamar"
+# MUST HAVE
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your_32_char_secret_here  # Generate: openssl rand -base64 32
+DATABASE_URL=file:./prisma/dev.db
 
-# GitHub Models (You already have this!)
-GITHUB_TOKEN="ghp_YOUR_TOKEN"
+# STRIPE (for payments)
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PUBLIC_KEY=pk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
 
-# MinIO Storage (Your existing setup)
-MINIO_ENDPOINT="http://34.47.163.149:9000"
-MINIO_ACCESS_KEY="your-access-key"
+# EMAIL (for notifications)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your@gmail.com
+SMTP_PASSWORD=your_app_password
+```
+
+**How to get these values:**
+1. **Stripe Keys**: https://dashboard.stripe.com/apikeys
+2. **Gmail App Password**: https://myaccount.google.com/apppasswords (after enabling 2FA)
+3. **NEXTAUTH_SECRET**: Run `openssl rand -base64 32`
+
+---
+
+## 🧪 Testing the App
+
+### Test Account (for login):
+```
+Email: test@example.com
+Password: password123
+```
+
+Or create a new account by clicking "Sign Up"
+
+### Test Payment:
+1. Go to `/pricing`
+2. Click "Start Now" on any plan
+3. Use Stripe test card: `4242 4242 4242 4242`
+4. Expiry: Any future date (e.g., 12/25)
+5. CVC: Any 3 digits (e.g., 123)
+
+### Test Video Generation:
+1. After signup, go to `/dashboard`
+2. Click "Generate New Video" or goto `/videos/generate`
+3. Fill in business name and topic
+4. Submit form
+5. Video should appear in `/videos` with status "processing"
+
+### Test Email:
+1. Sign up with your real email
+2. Check inbox for welcome email
+3. Go to pricing and complete a payment
+4. Check inbox for payment receipt
+
+---
+
+## 📊 Dashboard Overview
+
+Once logged in, you'll see:
+
+```
+┌─────────────────────────────────────┐
+│ STATS (Top)                         │
+├─────────────────────────────────────┤
+│ Active Services │ Videos │ Views    │
+│ Monthly Spend   │ Storage Used      │
+├─────────────────────────────────────┤
+│ YOUR SERVICES          QUICK ACTIONS│
+├───────────────────┬─────────────────┤
+│ VPS Pro ($2500)   │ + New Service   │
+│ Web Hosting ($1500) │ + Generate Video │
+│                   │ 💳 Billing     │
+│ RECENT VIDEOS     │ ⚙️  Settings    │
+├───────────────────┼─────────────────┤
+│ Video 1 [Play]    │ CURRENT PLAN    │
+│ Video 2 [Play]    │ Business        │
+│ Video 3 [Process] │ 50 videos/month │
+│                   │ 50GB storage    │
+│ [See All]         │ [Upgrade Plan]  │
+│                   │ SUPPORT         │
+│                   │ [Contact Support]
+│                   │                 │
+└───────────────────┴─────────────────┘
+```
+
+---
+
+## 🎬 Pages Overview
+
+| URL | Purpose | Status |
+|-----|---------|--------|
+| `/` | Landing page | ✅ Ready |
+| `/auth/signin` | Login | ✅ Ready |
+| `/auth/signup` | Register | ✅ Ready |
+| `/dashboard` | Main dashboard | ✅ Ready |
+| `/pricing` | Pricing plans | ✅ Ready |
+| `/videos` | Video listing | ✅ Ready |
+| `/videos/generate` | Create video form | ✅ Ready |
+| `/api/auth/*` | Auth routes | ✅ Ready |
+| `/api/payment/checkout` | Stripe integration | ✅ Ready |
+| `/api/payment/webhook` | Stripe webhook | ✅ Ready |
+| `/api/videos` | Video API | ✅ Ready |
+
+---
+
+## 💡 What's Working Now
+
+✅ **User Management**
+- Signup with email/password
+- Login with credentials
+- Session management
+- Logout
+
+✅ **Dashboard**
+- Display active services
+- Show generated videos
+- Quick action links
+- Plan information
+
+✅ **Pricing**
+- 3 plan options (Starter/Business/Enterprise)
+- Feature comparison
+- FAQ section
+
+✅ **Payments**
+- Stripe checkout integration
+- Webhook processing
+- Subscription creation/update
+- Payment receipts via email
+
+✅ **Email Notifications**
+- Welcome emails on signup
+- Payment receipts on checkout
+- Subscription confirmations
+- (Video ready emails coming soon)
+
+✅ **Video Management**
+- Generate video request form
+- Video listing with status
+- Mock data display (ready for real data)
+
+---
+
+## 🔧 Common Commands
+
+```bash
+# Development
+npm run dev          # Start dev server (http://localhost:3000)
+npm run build        # Build for production
+npm start            # Run production build
+
+# Database
+npx prisma db push  # Apply migrations
+npx prisma studio  # Open database GUI
+npx prisma generate # Regenerate client types
+
+# Other
+npm run lint        # Check code style
+npm test           # Run tests (when implemented)
+```
+
+---
+
+## 🚢 Deploy to Production
+
+### On GCP VM:
+
+```bash
+# SSH into VM
+gcloud compute ssh migrated-vm-asia --zone=asia-south1-b
+
+# Pull latest code
+git pull
+
+# Install dependencies
+npm install
+
+# Build
+npm run build
+
+# Start with PM2
+pm2 start npm --name hostamar -- start
+
+# View logs
+pm2 logs hostamar
+```
+
+For detailed deployment steps, see `DEPLOYMENT_GUIDE_MVP.md`
+
+---
+
+## 🐛 Troubleshooting
+
+### "Port 3000 already in use"
+```bash
+# Find what's using port 3000
+lsof -i :3000
+
+# Kill the process
+kill -9 <PID>
+
+# Or use different port
+PORT=3001 npm run dev
+```
+
+### "Cannot find module '@/lib/prisma'"
+```bash
+# Regenerate Prisma client
+npx prisma generate
+
+# Restart dev server
+npm run dev
+```
+
+### "Database.sqlite.lock"
+```bash
+# Kill all node processes
+pkill -f node
+
+# Restart
+npm run dev
+```
+
+### "Email not sending"
+- Check SMTP credentials in `.env.local`
+- For Gmail: Enable 2FA and generate app password
+- Check console logs: `npm run dev` shows email errors
+
+### "Stripe key not found"
+- Add to `.env.local`:
+  ```env
+  STRIPE_SECRET_KEY=sk_test_xxx
+  STRIPE_PUBLIC_KEY=pk_test_xxx
+  ```
+- Restart dev server
+
+---
+
+## 📱 Test on Mobile
+
+### Local Network:
+```bash
+# Get your local IP (Mac/Linux)
+ipconfig getifaddr en0
+
+# Or Windows
+ipconfig
+
+# Visit from phone on same network
+http://YOUR_IP:3000
+```
+
+### Mobile Responsive:
+- Open DevTools (F12)
+- Click device icon
+- Select iPhone/Android
+
+---
+
+## 🎯 What to Test Next
+
+1. **Authentication**
+   - [ ] Sign up successfully
+   - [ ] Receive welcome email
+   - [ ] Login works
+   - [ ] Session persists
+   - [ ] Logout works
+
+2. **Dashboard**
+   - [ ] All sections visible
+   - [ ] Stats display correctly
+   - [ ] Services list shows
+   - [ ] Videos list shows
+   - [ ] Responsive on mobile
+
+3. **Pricing & Payments**
+   - [ ] All 3 plans visible
+   - [ ] Stripe checkout works
+   - [ ] Payment successful
+   - [ ] Receipt email received
+   - [ ] Plan updates in dashboard
+
+4. **Videos**
+   - [ ] Generate form accessible
+   - [ ] Can submit video request
+   - [ ] Video appears in list
+   - [ ] Status tracking shows "processing"
+
+5. **Email System**
+   - [ ] Welcome email sent
+   - [ ] Payment receipt sent
+   - [ ] Upgrade emails sent
+   - [ ] Emails are properly formatted
+
+---
+
+## 📈 Next Milestone: 80% MVP
+
+To reach 80% completion, we need:
+
+1. **Video Generation API** (20%)
+   - Connect to OpenAI for script generation
+   - Setup FFmpeg for rendering
+   - Create background job queue
+   - Send "video ready" emails
+
+2. **Real Data Integration** (5%)
+   - Replace mock data with Prisma queries
+   - Real dashboard stats
+   - Real video listings
+
+3. **Advanced Features** (5%)
+   - Video download endpoint
+   - Video sharing functionality
+   - Basic video analytics
+
+**Estimated Time**: 2-3 weeks for a small team
+
+---
+
+## 📞 Support
+
+**Issues?** Check:
+1. `DEPLOYMENT_GUIDE_MVP.md` - Detailed setup & troubleshooting
+2. `MVP_IMPLEMENTATION_SUMMARY.md` - Technical details
+3. Logs: `npm run dev` output or PM2 logs
+4. Console: Browser DevTools F12
+
+**Stuck?** Create an issue or contact support@hostamar.com
+
+---
+
+**Happy Testing! 🎉**
+
+Start with: `npm run dev` then visit http://localhost:3000
 MINIO_SECRET_KEY="your-secret-key"
 
 # Optional: Better Voice Quality

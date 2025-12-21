@@ -1,0 +1,130 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20251221020002
+Username: HOSTAMAR-COM\romel
+RunAs User: HOSTAMAR-COM\romel
+Configuration Name: 
+Machine: HOSTAMAR-COM (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\romel\OneDrive\Documents\aiauto\ai-agent\nightly_eval_wrapper.ps1
+Process ID: 25028
+PSVersion: 5.1.26100.7462
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7462
+BuildVersion: 10.0.26100.7462
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is G:\My Drive\Automations\ai-agent\logs\nightly_eval_2025-12-21_020002.log
+========================================
+Nightly AI Agent Evaluation
+Started: 2025-12-21 02:00:02
+========================================
+Hybrid Cloud Infrastructure Agent Runner
+Using venv Python: G:\My Drive\Automations\.venv\Scripts\python.exe
+Checking Python dependencies...
+Installing requirements (preview packages)...
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+Requirement already satisfied: pip in g:\my drive\automations\.venv\lib\site-packages (25.3)
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+Could not fetch URL https://pypi.org/simple/pip/: There was a problem confirming the ssl certificat
+e: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/pip/ (Cau
+sed by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of pr
+otocol (_ssl.c:1077)'))) - skipping
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+Could not fetch URL https://pypi.org/simple/pip/: There was a problem confirming the ssl certificat
+e: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/pip/ (Cau
+sed by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of pr
+otocol (_ssl.c:1077)'))) - skipping
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+Requirement already satisfied: requests>=2.31.0 in g:\my drive\automations\.venv\lib\site-packages
+(from -r G:\My Drive\Automations\ai-agent\requirements.txt (line 1)) (2.32.5)
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/google-generativeai/
+WARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/google-generativeai/
+WARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/google-generativeai/
+WARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/google-generativeai/
+WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/google-generativeai/
+Could not fetch URL https://pypi.org/simple/google-generativeai/: There was a problem confirming th
+e ssl certificate: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /
+simple/google-generativeai/ (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING]
+ EOF occurred in violation of protocol (_ssl.c:1077)'))) - skipping
+ERROR: Could not find a version that satisfies the requirement google-generativeai>=0.1.0 (from ver
+sions: none)
+Could not fetch URL https://pypi.org/simple/pip/: There was a problem confirming the ssl certificat
+e: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/pip/ (Cau
+sed by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of pr
+otocol (_ssl.c:1077)'))) - skipping
+ERROR: No matching distribution found for google-generativeai>=0.1.0
+Selected GitHub token index 0 from GITHUB_TOKENS.
+Model source: Foundry (Azure) - model='gpt-4o-mini' endpoint='https://hostamar-resource.services.ai.azure.com/api/projects/hostamar/applications/1hostamar'
+Checking trace collector at http://localhost:4318...
+PS>TerminatingError(Invoke-WebRequest): "The operation has timed out."
+WARNING: Trace collector not reachable.
+Open VS Code, run 'AI Toolkit: Open Trace Viewer' to start the collector (OTLP at http://localhost:4318).
+Running evaluation...
+Using Foundry endpoint from environment.
+Using queries file: G:\My Drive\Automations\ai-agent\evaluation\test_queries.json
+Responses file: G:\My Drive\Automations\ai-agent\evaluation\agent_responses.jsonl
+Results directory: G:\My Drive\Automations\ai-agent\evaluation\results
+Responses file not found. Collecting fresh responses from agent...
+
+Traceback (most recent call last):
+  File "G:\My Drive\Automations\ai-agent\evaluate_agent.py", line 404, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "G:\My Drive\Automations\ai-agent\evaluate_agent.py", line 363, in main
+    await collect_agent_responses(queries_file, responses_file)
+  File "G:\My Drive\Automations\ai-agent\evaluate_agent.py", line 60, in collect_agent_responses
+    from infrastructure_agent import (
+    ...<3 lines>...
+    )
+  File "G:\My Drive\Automations\ai-agent\infrastructure_agent.py", line 155
+    \"\"\"Run the infrastructure management agent using local Ollama.\"\"\"
+     ^
+SyntaxError: unexpected character after line continuation character
+Automation complete.
+========================================
+Evaluation completed successfully
+Finished: 2025-12-21 02:35:54
+========================================
+**********************
+Windows PowerShell transcript end
+End time: 20251221023554
+**********************

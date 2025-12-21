@@ -1,0 +1,28 @@
+proxmox:
+  host: "192.168.1.83"
+  port: 8006
+  user: "root@pam"
+  token_id: "hostamar-token"
+  token_secret: "0569eeaa-c69d-479b-999f-a21ae427619e"
+  verify_ssl: false
+  node: "pve"
+
+container_specs:
+  prefix: "ansible-node"
+  ostemplate: "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst" # Using 22.04 as requested
+  cores: 2
+  memory: 4096
+  swap: 512
+  disk_size: 50
+  storage_id: "local-lvm"
+  network_bridge: "vmbr0"
+  ipv4_address: "192.168.1.100/24" # Static IP
+  gateway: "192.168.1.1"
+  password: "AnsibleReady123!"
+
+limits:
+  cpu_units: 1024
+
+logging:
+  file: "ansible_deploy.log"
+  level: "INFO"

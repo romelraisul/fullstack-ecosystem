@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'ollama'
+    static_configs:
+      - targets: ['ollama:11434'] # Note: Ollama doesn't export metrics directly by default without wrapper, but we'll use a sidecar if needed later.
+
+  - job_name: 'mcp-server'
+    static_configs:
+      - targets: ['mcp-server:8080']

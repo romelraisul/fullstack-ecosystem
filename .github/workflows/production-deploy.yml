@@ -1,0 +1,167 @@
+name: Hostamar Production CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      rollback_version:
+        description: 'Version to rollback to (e.g., v1.0.0)'
+        required: false
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.10'
+  SSH_HOST: "hostamar-prod.asia-south2-b.arafat-468807"
+  DEPLOY_PATH: "/home/romel/deployments"
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+jobs:
+  lint-and-test:
+    name: 🛡️ Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'hostamar-platform/package-lock.json'
+
+      - name: Install Node Dependencies
+        run: |
+          cd hostamar-platform
+          npm ci
+
+      - name: Linting
+        run: |
+          cd hostamar-platform
+          npm run lint
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python Dependencies
+        run: |
+          pip install pytest requests
+
+      - name: Run Unit Tests
+        run: |
+          pytest Automations/ai-agent/tests/
+
+  build-artifact:
+    name: 📦 Build & Package
+    needs: lint-and-test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ steps.package.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Next.js
+        run: |
+          cd hostamar-platform
+          npm ci
+          npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Create Tarball
+        id: package
+        run: |
+          VERSION=${GITHUB_SHA::7}
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          NAME="hostamar-latest.tar.gz"
+          cd hostamar-platform
+          tar --exclude='node_modules' --exclude='.next' --exclude='.git' -czf ../$NAME .
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-bundle
+          path: hostamar-latest.tar.gz
+
+  deploy-to-production:
+    name: 🚀 Deploy to Production (Blue/Green)
+    needs: build-artifact
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-bundle
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_google_compute_engine
+          chmod 600 ~/.ssh/id_google_compute_engine
+          echo "Host ${{ env.SSH_HOST }}
+            IdentityFile ~/.ssh/id_google_compute_engine
+            StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Execute Blue/Green Deployment
+        run: |
+          # 1. Upload Artifact
+          scp hostamar-latest.tar.gz ${{ env.SSH_HOST }}:${{ env.DEPLOY_PATH }}/green/
+          
+          # 2. Remote Orchestration
+          ssh ${{ env.SSH_HOST }} "bash -s" << 'EOF'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}/green
+            tar -xzf hostamar-latest.tar.gz
+            npm install --production --silent
+            npx prisma generate
+            npm run build
+            
+            # Switch Traffic using our Robust Rollback Orchestrator (used here as Switcher)
+            python3 ${{ env.DEPLOY_PATH }}/robust_rollback.py --switch-to-green
+          EOF
+
+      - name: Run Smoke Tests
+        run: |
+          python3 Automations/scripts/smoke_test.py "https://hostamar.com"
+
+      - name: Auto-Rollback on Failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed! Triggering automated rollback..."
+          ssh ${{ env.SSH_HOST }} "python3 ${{ env.DEPLOY_PATH }}/robust_rollback.py"
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"🚨 Production Deployment FAILED. Automated rollback executed for version ${{ github.sha }}."}' ${{ env.SLACK_WEBHOOK }}
+
+      - name: Notify Success
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"✅ Production Deployment SUCCESSFUL. Version ${{ github.sha }} is now live."}' ${{ env.SLACK_WEBHOOK }}
+
+  manual-rollback:
+    name: 🔄 Manual Rollback Trigger
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_google_compute_engine
+          chmod 600 ~/.ssh/id_google_compute_engine
+          echo "Host ${{ env.SSH_HOST }}
+            IdentityFile ~/.ssh/id_google_compute_engine
+            StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Execute Specific Version Rollback
+        run: |
+          ssh ${{ env.SSH_HOST }} "python3 ${{ env.DEPLOY_PATH }}/robust_rollback.py --version ${{ github.event.inputs.rollback_version }}"

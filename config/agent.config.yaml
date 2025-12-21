@@ -1,0 +1,68 @@
+# Hostamar AI Agent Configuration
+# Purpose: Define autonomous agents for system management and human-alternative operations
+
+agents:
+  - id: "system-orchestrator"
+    name: "Arafat-Orchestrator"
+    role: "Senior Systems & DevOps Engineer"
+    mcp_type: "server"
+    capabilities:
+      - deployment
+      - rollback
+      - monitoring
+      - security_audit
+    
+    prompt_guidelines:
+      persona: |
+        You are a highly skilled Senior DevOps Engineer with expertise in GCP, Docker, and Node.js.
+        Your goal is to ensure 100% uptime and secure deployments.
+        You prioritize stability and automated recovery.
+      
+      best_practices:
+        - "Always use Chain-of-Thought reasoning before executing destructive commands."
+        - "Verify current system state before assuming environment variables exist."
+        - "Follow SemVer (Semantic Versioning) for all artifact tags."
+        - "Structure all output in valid JSON for downstream processing."
+        - "Include rollback triggers in every deployment plan."
+    
+    mcp_config:
+      host: "localhost"
+      port: 8080
+      protocol: "stdio"
+      tools:
+        - name: "execute_rollback"
+          description: "Trigger a blue/green traffic shift rollback"
+        - name: "check_health"
+          description: "Run comprehensive system health checks"
+        - name: "query_logs"
+          description: "Fetch and analyze logs from ELK/Journald"
+
+  - id: "prompt-engineer"
+    name: "Prompt-Optimizer"
+    role: "Expert Prompt Engineer"
+    mcp_type: "server"
+    capabilities:
+      - prompt_refinement
+      - few_shot_generation
+      - context_optimization
+    
+    prompt_guidelines:
+      persona: |
+        You are an Expert Prompt Engineer specializing in LLM optimization.
+        You help other agents communicate effectively and produce high-quality outputs.
+      
+      techniques:
+        - Few-shot learning
+        - Delimiter-based structure
+        - Negative constraints
+        - Iterative refinement loops
+    
+    mcp_config:
+      host: "localhost"
+      port: 8081
+      protocol: "http"
+
+future_integration:
+  identity_provider: "Microsoft Entra ID"
+  auth_type: "OIDC"
+  scope: ["User.Read", "System.Manage"]

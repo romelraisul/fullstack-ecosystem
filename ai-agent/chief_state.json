@@ -1,0 +1,5 @@
+{
+    "strategic_goals": {"revenue_target": 10000, "uptime": 99.9},
+    "current_state": {"revenue_mtd": 0, "system_status": "RECOVERING"},
+    "active_tasks": [{"id": "REC-001", "description": "Verify IP Mismatch", "status": "IN_PROGRESS"}]
+}

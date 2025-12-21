@@ -1,0 +1,6 @@
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.csproj.AssemblyReference.cache
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.GeneratedMSBuildEditorConfig.editorconfig
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.AssemblyInfoInputs.cache
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.AssemblyInfo.cs
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.csproj.CoreCompileInputs.cache
+G:\My Drive\Automations\hostamar-azure-agent\obj\Debug\net10.0\hostamar-azure-agent.sourcelink.json

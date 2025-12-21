@@ -24,6 +24,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-8">
             <Link href="/about" className="text-gray-600 hover:text-blue-600 font-medium">About</Link>
             <Link href="/features" className="text-gray-600 hover:text-blue-600 font-medium">Features</Link>
+            <Link href="/services" className="text-gray-600 hover:text-blue-600 font-medium">Services</Link>
             <Link href="/pricing" className="text-gray-600 hover:text-blue-600 font-medium">Pricing</Link>
             <Link href="/contact" className="text-gray-600 hover:text-blue-600 font-medium">Contact</Link>
           </div>
@@ -54,6 +55,7 @@ export function Navbar() {
           <div className="p-4 space-y-4">
             <Link href="/about" className="block text-gray-600 py-2">About</Link>
             <Link href="/features" className="block text-gray-600 py-2">Features</Link>
+            <Link href="/services" className="block text-gray-600 py-2">Services</Link>
             <Link href="/pricing" className="block text-gray-600 py-2">Pricing</Link>
             <Link href="/contact" className="block text-gray-600 py-2">Contact</Link>
             <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">

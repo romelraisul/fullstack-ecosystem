@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  # Business 6: Telegram Bot Runner
+  bot_runner:
+    image: python:3.11-slim
+    container_name: bot_hosting_engine
+    restart: always
+    volumes:
+      - ./bots:/app/bots
+    working_dir: /app/bots
+    command: sh -c "pip install -r requirements.txt && python manager.py"
+    environment:
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+
+  # Payment Automation (Android Emulator placeholder)
+  # Note: Requires KVM on host, may need special config inside container
+  # android_emu:
+  #   image: budtmo/docker-android:emulator_11.0
+  #   container_name: payment_automator
+  #   privileged: true
+  #   ports:
+  #     - "6080:6080"

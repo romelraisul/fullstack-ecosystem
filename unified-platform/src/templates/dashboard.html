@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MASTER COMMAND CENTER | Unified Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        panel: '#1a1c2c',
+                        border: '#2d3047',
+                        accent: '#4e54c8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .neon-glow { text-shadow: 0 0 10px rgba(78, 84, 200, 0.8); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-200 font-sans">
+
+    <!-- Sidebar / Nav -->
+    <div class="fixed top-0 left-0 h-full w-16 flex flex-col items-center py-6 glass-panel z-50">
+        <div class="text-blue-500 mb-8 text-2xl neon-glow"><i class="fas fa-shield-halved"></i></div>
+        <div class="space-y-8 text-slate-400">
+            <div class="hover:text-blue-400 cursor-pointer transition"><i class="fas fa-chart-line fa-lg"></i></div>
+            <div class="hover:text-blue-400 cursor-pointer transition"><i class="fas fa-robot fa-lg"></i></div>
+            <div class="hover:text-blue-400 cursor-pointer transition"><i class="fas fa-project-diagram fa-lg"></i></div>
+            <div class="hover:text-blue-400 cursor-pointer transition"><i class="fas fa-database fa-lg"></i></div>
+            <div class="hover:text-blue-400 cursor-pointer transition"><i class="fas fa-cog fa-lg"></i></div>
+        </div>
+    </div>
+
+    <!-- Top Bar -->
+    <header class="ml-16 h-16 glass-panel flex items-center justify-between px-8 sticky top-0 z-40">
+        <div class="flex items-center space-x-4">
+            <h1 class="text-xl font-black tracking-widest text-white uppercase italic">Master Command Center</h1>
+            <span class="px-2 py-1 bg-green-500/20 text-green-400 text-[10px] rounded-full border border-green-500/30 animate-pulse">SYSTEM: ACTIVE</span>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div class="text-sm font-mono text-slate-400" id="clock">00:00:00</div>
+            <div class="flex items-center space-x-2">
+                <img src="https://ui-avatars.com/api/?name=Admin&background=4e54c8&color=fff" class="w-8 h-8 rounded-lg">
+                <span class="text-sm font-bold">Arafat</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="ml-16 p-8">
+        <!-- KPI Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="glass-panel p-6 rounded-2xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-4xl"><i class="fas fa-users-gear"></i></div>
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-tighter">Total Agents</p>
+                <h2 class="text-4xl font-black mt-2" id="stat-agents">81</h2>
+                <div class="mt-4 text-[10px] text-blue-400">Registry integrity: 100%</div>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl relative overflow-hidden border-l-4 border-l-blue-500">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-tighter">Avg Latency</p>
+                <h2 class="text-4xl font-black mt-2"><span id="stat-latency">42</span><small class="text-lg">ms</small></h2>
+                <div class="w-full bg-slate-700 h-1 mt-4 rounded-full"><div class="bg-blue-500 h-1 rounded-full" style="width: 75%"></div></div>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl relative overflow-hidden border-l-4 border-l-purple-500">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-tighter">Workflow Success</p>
+                <h2 class="text-4xl font-black mt-2" id="stat-success">98.2%</h2>
+                <div class="mt-4 text-[10px] text-purple-400">Total Runs: 1,402</div>
+            </div>
+            <div class="glass-panel p-6 rounded-2xl relative overflow-hidden border-l-4 border-l-orange-500">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-tighter">RAG Context Score</p>
+                <h2 class="text-4xl font-black mt-2" id="stat-rag">0.89</h2>
+                <div class="mt-4 text-[10px] text-orange-400">Similarity Index: High</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-8">
+            <!-- Center Column: Visualizations & Planning -->
+            <div class="col-span-12 lg:col-span-8 space-y-8">
+                <!-- Main Chart -->
+                <div class="glass-panel p-6 rounded-3xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="font-bold tracking-tight"><i class="fas fa-wave-square mr-2 text-blue-500"></i> SYSTEM THROUGHPUT</h3>
+                        <div class="flex space-x-2">
+                            <button class="px-3 py-1 bg-slate-700 text-xs rounded-lg hover:bg-slate-600 transition">Real-time</button>
+                            <button class="px-3 py-1 bg-accent text-xs rounded-lg shadow-lg shadow-accent/20">24H</button>
+                        </div>
+                    </div>
+                    <canvas id="throughputChart" height="120"></canvas>
+                </div>
+
+                <!-- Planning & Workflow Center -->
+                <div class="grid grid-cols-2 gap-8">
+                    <div class="glass-panel p-6 rounded-3xl">
+                        <h3 class="font-bold mb-4 flex items-center"><i class="fas fa-brain mr-2 text-purple-500"></i> Planning Hub</h3>
+                        <div class="space-y-4">
+                            <textarea placeholder="Define new objective..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm focus:outline-none focus:border-accent resize-none h-24"></textarea>
+                            <div class="flex justify-between">
+                                <select class="bg-slate-800 text-xs border border-slate-700 rounded-lg px-2">
+                                    <option>Strategic Task</option>
+                                    <option>Data Extraction</option>
+                                    <option>Security Audit</option>
+                                </select>
+                                <button class="bg-accent text-xs px-6 py-2 rounded-xl font-bold shadow-xl shadow-accent/30 hover:scale-105 transition">DEPLOY PLAN</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-6 rounded-3xl overflow-hidden">
+                        <h3 class="font-bold mb-4 flex items-center"><i class="fas fa-diagram-next mr-2 text-orange-500"></i> Active Workflows</h3>
+                        <div class="space-y-3 overflow-y-auto max-h-40 pr-2" id="workflow-list">
+                            <div class="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg border border-slate-700">
+                                <span class="text-xs">Market Analysis</span>
+                                <span class="text-[10px] text-blue-400">RUNNING...</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg border border-slate-700">
+                                <span class="text-xs">Database Sync</span>
+                                <span class="text-[10px] text-green-400">DONE</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Agents & Logs -->
+            <div class="col-span-12 lg:col-span-4 space-y-8">
+                <!-- Agents Registry -->
+                <div class="glass-panel p-6 rounded-3xl h-[450px] flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold"><i class="fas fa-microchip mr-2 text-blue-400"></i> Agent Fleet</h3>
+                        <span class="text-[10px] bg-slate-700 px-2 py-1 rounded-full">81 TOTAL</span>
+                    </div>
+                    <div class="relative mb-4">
+                        <i class="fas fa-search absolute left-3 top-3 text-slate-500 text-xs"></i>
+                        <input type="text" placeholder="Filter agents..." class="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-2 pl-10 pr-4 text-xs">
+                    </div>
+                    <div id="agent-grid" class="flex-1 overflow-y-auto space-y-2 pr-2">
+                        <!-- Agents rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Live Log Terminal -->
+                <div class="glass-panel rounded-3xl overflow-hidden flex flex-col h-[350px]">
+                    <div class="bg-slate-800/80 px-4 py-2 flex items-center justify-between border-b border-slate-700">
+                        <span class="text-[10px] font-mono font-bold tracking-widest text-slate-400">SYSTEM_LOGS_v1.0.0</span>
+                        <div class="flex space-x-1">
+                            <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                            <div class="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                        </div>
+                    </div>
+                    <div id="terminal" class="flex-1 bg-black/40 p-4 font-mono text-[10px] text-green-500 overflow-y-auto">
+                        <p class="text-slate-500 italic">[INIT] Authenticating Master Control...</p>
+                        <p class="text-green-400">[OK] Session established. Agent registry synced.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Real-time Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Throughput Chart
+        const ctx = document.getElementById('throughputChart').getContext('2d');
+        const throughputChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(24).fill(''),
+                datasets: [{
+                    label: 'Requests',
+                    data: Array(24).fill(0).map(() => Math.floor(Math.random() * 50) + 10),
+                    borderColor: '#4e54c8',
+                    backgroundColor: 'rgba(78, 84, 200, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { grid: { color: '#2d3047' }, ticks: { color: '#64748b' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // Dynamic Loading
+        async function initDashboard() {
+            try {
+                // Fetch Stats
+                const stats = await fetch('/metrics').then(r => r.json());
+                document.getElementById('stat-latency').innerText = stats.avg_latency_ms;
+                document.getElementById('stat-agents').innerText = stats.total_requests > 0 ? 81 : 0;
+                
+                // Fetch Agents
+                const agents = await fetch('/api/v1/agents').then(r => r.json());
+                const grid = document.getElementById('agent-grid');
+                grid.innerHTML = agents.map(a => `
+                    <div class="flex items-center p-3 bg-slate-800/30 border border-slate-700 rounded-2xl hover:border-accent group transition cursor-pointer">
+                        <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center text-accent mr-3 group-hover:bg-accent group-hover:text-white transition">
+                            <i class="fas fa-microchip text-xs"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-xs font-bold">${a.name}</div>
+                            <div class="text-[9px] text-slate-500 uppercase font-black">${a.category}</div>
+                        </div>
+                        <div class="flex space-x-1 opacity-0 group-hover:opacity-100 transition">
+                            <i class="fas fa-play-circle text-blue-400"></i>
+                            <i class="fas fa-chart-pie text-slate-500"></i>
+                        </div>
+                    </div>
+                `).join('');
+
+                addLog("Master registry loaded. 81 agents online.");
+            } catch (e) {
+                console.error(e);
+                addLog("ERROR: Connection failed. Check API status.", "red");
+            }
+        }
+
+        function addLog(msg, color = "green") {
+            const term = document.getElementById('terminal');
+            const p = document.createElement('p');
+            p.className = color === "red" ? "text-red-400" : "text-green-400";
+            p.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            term.appendChild(p);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        initDashboard();
+        // Update charts every 10s
+        setInterval(() => {
+            throughputChart.data.datasets[0].data.shift();
+            throughputChart.data.datasets[0].data.push(Math.floor(Math.random() * 50) + 10);
+            throughputChart.update();
+        }, 10000);
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 
 import { prisma } from '@/lib/prisma'
 
-export type AnalyticsEvent = 'SIGNUP' | 'LOGIN' | 'VIDEO_GENERATED' | 'PAYMENT_SUCCEEDED' | 'PAYMENT_FAILED' | 'PAGE_VIEW'
+export type AnalyticsEvent = 'SIGNUP' | 'LOGIN' | 'VIDEO_GENERATED' | 'PAYMENT_SUCCEEDED' | 'PAYMENT_FAILED' | 'PAGE_VIEW' | 'EMAIL_SENT'
 
 export async function trackEvent(
   userId: string | undefined, 

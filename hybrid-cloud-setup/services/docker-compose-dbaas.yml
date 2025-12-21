@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # Business 4: DBaaS - PostgreSQL
+  postgres_primary:
+    image: postgres:15
+    container_name: dbaas_postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Business 4: DBaaS - MongoDB
+  mongo_primary:
+    image: mongo:6
+    container_name: dbaas_mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  # Management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: dbaas_manager
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+
+volumes:
+  postgres_data:
+  mongo_data:
+  portainer_data:

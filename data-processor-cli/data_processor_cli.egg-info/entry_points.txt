@@ -1,0 +1,2 @@
+[console_scripts]
+data-processor = src.main:main

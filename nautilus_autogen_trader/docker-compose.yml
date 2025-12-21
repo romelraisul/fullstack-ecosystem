@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: trader_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  nautilus_system:
+    image: nautilus_trader_image:latest
+    container_name: trader_engine
+    build: ./nautilus_system
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+    volumes:
+      - ./nautilus_system:/app/nautilus_system
+      - ./autogen_workspace/tools:/app/tools:ro
+
+  autogen_workspace:
+    image: autogen_agent_image:latest
+    container_name: trader_brain
+    build: ./autogen_workspace
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis
+    volumes:
+      - ./autogen_workspace:/app/workspace
+      - ./autogen_workspace/memory:/app/memory
+
+  web_dashboard:
+    image: trader_dashboard:latest
+    container_name: trader_ui
+    build: ./web_dashboard
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:

@@ -1,0 +1,55 @@
+---
+- name: Deploy Hostamar AI Agent to Production
+  hosts: hostamar-prod
+  become: yes
+  vars:
+    install_dir: "/opt/hostamar/ai-agent"
+    venv_dir: "{{ install_dir }}/venv"
+    repo_url: "https://github.com/hostamar/ai-agent.git"
+
+  tasks:
+    - name: Ensure system dependencies are installed
+      apt:
+        name:
+          - python3-pip
+          - python3-venv
+          - git
+        state: present
+        update_cache: yes
+
+    - name: Create agent directory
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy agent configuration
+      copy:
+        src: agent_config.yaml
+        dest: "{{ install_dir }}/agent_config.yaml"
+
+    - name: Create Python virtual environment
+      command: python3 -m venv {{ venv_dir }}
+      args:
+        creates: "{{ venv_dir }}"
+
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ install_dir }}/requirements.txt"
+        virtualenv: "{{ venv_dir }}"
+
+    - name: Install Systemd Service
+      template:
+        src: agent.service.j2
+        dest: /etc/systemd/system/hostamar-agent.service
+      notify: Restart Agent
+
+  handlers:
+    - name: Restart Agent
+      systemd:
+        name: hostamar-agent
+        state: restarted
+        enabled: yes
+        daemon_reload: yes

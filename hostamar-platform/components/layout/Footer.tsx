@@ -16,7 +16,9 @@ export function Footer() {
               Empowering businesses with AI-driven cloud hosting and automated marketing solutions.
             </p>
             <div className="flex gap-4 text-gray-400">
-              <Facebook className="h-5 w-5 hover:text-blue-600 cursor-pointer" />
+              <Link href="https://www.facebook.com/share/17R9R19AyA/" target="_blank" rel="noopener noreferrer">
+                <Facebook className="h-5 w-5 hover:text-blue-600 cursor-pointer" />
+              </Link>
               <Twitter className="h-5 w-5 hover:text-blue-400 cursor-pointer" />
               <Instagram className="h-5 w-5 hover:text-pink-600 cursor-pointer" />
               <Linkedin className="h-5 w-5 hover:text-blue-700 cursor-pointer" />

@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Hostamar',
-  description: 'AI-Powered Cloud Hosting',
+  description: 'Enterprise-Grade Hybrid Cloud Infrastructure & AI Automation Platform',
 }
 
 export default function RootLayout({
@@ -19,6 +19,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      {/* 
+        TODO: Add Google Analytics / Tag Manager Script here.
+        Example: <Script src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX" />
+      */}
       <body className={inter.className}>
         <Providers>
           <Navbar />

@@ -1,25 +1,2 @@
-# Hybrid Cloud Infrastructure AI Agent
-# Core dependencies
-
-# Agent Framework (requires --pre flag during installation)
-agent-framework-azure-ai  # Microsoft Agent Framework with Azure AI integration
-
-# OpenAI SDK for GitHub Models
-openai>=1.0.0
-
-# Azure AI Evaluation SDK
-azure-ai-evaluation>=1.0.0
-
-# OpenTelemetry for tracing
-opentelemetry-sdk
-opentelemetry-exporter-otlp-proto-http
-
-# Azure AI Inference (includes OpenTelemetry integration)
-azure-ai-inference[opentelemetry]==1.0.0b9
-
-# Promptflow (required by custom evaluators) - core only to avoid pillow build issues
-promptflow-core>=1.0.0
-promptflow-tracing>=1.0.0
-
-# Azure Identity (for authentication)
-azure-identity>=1.0.0
+requests>=2.31.0
+google-generativeai>=0.1.0

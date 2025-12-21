@@ -15,6 +15,8 @@
     "audit:perf": "lhci autorun"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.478.0",
+    "@google/generative-ai": "^0.1.3",
     "@prisma/client": "^5.7.0",
     "bcrypt": "^5.1.1",
     "clsx": "^2.0.0",

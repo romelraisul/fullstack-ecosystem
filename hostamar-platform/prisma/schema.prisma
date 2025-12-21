@@ -82,7 +82,7 @@ model Video {
   
   title         String
   description   String?
-  script        String   @db.Text
+  script        String
   
   // Video Details
   duration      Int      // seconds
@@ -121,8 +121,8 @@ model Service {
   status        String   @default("active") // active, suspended, terminated
   
   // Service Details (JSON for flexibility)
-  specs         String   @db.Text // JSON: {cpu: 2, ram: 4, storage: 40}
-  credentials   String   @db.Text // Encrypted JSON
+  specs         String // JSON: {cpu: 2, ram: 4, storage: 40}
+  credentials   String // Encrypted JSON
   
   // Server Assignment
   serverIp      String?
@@ -151,7 +151,7 @@ model VideoQueue {
   // Error handling
   attempts      Int      @default(0)
   maxAttempts   Int      @default(3)
-  error         String?  @db.Text
+  error         String?
   
   // Result
   videoId       String?
@@ -168,8 +168,8 @@ model ActivityLog {
   customerId    String?
   
   action        String   // login, video_generated, service_created, etc.
-  description   String   @db.Text
-  metadata      String?  @db.Text // JSON
+  description   String
+  metadata      String? // JSON
   
   ipAddress     String?
   userAgent     String?

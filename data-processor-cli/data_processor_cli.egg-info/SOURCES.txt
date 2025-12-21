@@ -1,0 +1,11 @@
+pyproject.toml
+data_processor_cli.egg-info/PKG-INFO
+data_processor_cli.egg-info/SOURCES.txt
+data_processor_cli.egg-info/dependency_links.txt
+data_processor_cli.egg-info/entry_points.txt
+data_processor_cli.egg-info/top_level.txt
+src/logger.py
+src/main.py
+src/processor.py
+src/validator.py
+tests/test_processor.py

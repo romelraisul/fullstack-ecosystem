@@ -1,0 +1,12 @@
+{"timestamp": "2025-12-15T18:46:27.478331", "level": "INFO", "message": "Template local:vztmpl/debian-11-standard_11.3-1_amd64.tar.zst missing. Attempting download of debian-11-standard_11.3-1_amd64.tar.zst...", "module": "vm_deploy", "execution_time_ms": 0}
+{"timestamp": "2025-12-15T18:46:27.590087", "level": "WARNING", "message": "Could not verify/download template: 501 Not Implemented: Method 'POST /nodes/pve/aplinfo/download' not implemented. Deployment might fail.", "module": "vm_deploy", "execution_time_ms": 0}
+{"timestamp": "2025-12-15T18:46:27.608374", "level": "INFO", "message": "Deploying LXC Container: hostamar-lxc-104 (ID: 104) on pve...", "module": "vm_deploy", "execution_time_ms": 0}
+{"timestamp": "2025-12-15T18:46:27.750908", "level": "ERROR", "message": "Deployment Failed: 500 Internal Server Error: unable to parse lvm volume name '20G'", "module": "vm_deploy", "execution_time_ms": 492.79165267944336}
+ERROR: No LXC templates found in storage 'local'. Please download a template in Proxmox UI.
+INFO: Found available template: local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst
+INFO: Deploying LXC Container: hostamar-lxc-104 (ID: 104) on pve using local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst...
+INFO: Deployment Request Sent! Waiting for startup...
+INFO: Container Status: running
+INFO: Found compatible template: local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+INFO: Deploying Ubuntu LXC: hostamar-ubuntu-105 (ID: 105) on pve using local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst...
+INFO: Deployment Request Sent! Container 105 should be running shortly.

@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: data-processor-cli
+Version: 1.0.0
+Summary: High-performance file processing CLI tool
+Author-email: Hostamar Engineering <engineering@hostamar.com>
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown

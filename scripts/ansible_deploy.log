@@ -1,0 +1,8 @@
+INFO: Template ubuntu-22.04 not found. Attempting download of ubuntu-22.04-standard_22.04-1_amd64.tar.zst...
+WARNING: Download failed: 501 Not Implemented: Method 'POST /nodes/pve/aplinfo/download' not implemented. Checking for ANY ubuntu template...
+INFO: Deploying Ansible Node: ansible-node-01 (ID: 106) IP: 192.168.1.100/24
+ERROR: Deployment Failed: [Errno 2] No such file or directory: 'G:\\My Drive\\Automations\\hybrid-cloud-setup\\keys\\public.key'
+INFO: Deploying ansible-node-01 (ID: 106) IP: 192.168.1.100/24
+ERROR: Deployment Failed: 500 Internal Server Error: unable to parse lvm volume name '50G'
+INFO: Deploying ansible-node-01 (ID: 106) IP: 192.168.1.100/24
+INFO: Deployment Request Sent! VMID: 106

@@ -1,0 +1,3 @@
+DATABASE_URL: "postgresql://admin:secret@localhost:5432/production_db"
+API_KEY: "prod_key_1234567890"
+LOG_LEVEL: "INFO"

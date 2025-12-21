@@ -1,0 +1,18 @@
+agent:
+  name: "Atlas-Production"
+  role: "infrastructure_manager"
+  version: "1.2.0"
+  environment: "production"
+  
+telemetry:
+  enabled: true
+  endpoint: "http://otel-collector:4318"
+
+ollama:
+  endpoint: "http://proxmox-server:11434" # Placeholder, update if IP is known
+  api_key: "fbfada2e56f84214a0e9c87b68f263d7.T0YGQMge61eYcNPergbCGjNB"
+  model: "llama3"
+
+network:
+  wireguard_interface: "wg0"
+  winrm_port: 5986

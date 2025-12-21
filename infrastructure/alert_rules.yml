@@ -1,0 +1,19 @@
+groups:
+- name: deployment_alerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[1m]) / rate(http_requests_total[1m]) > 0.01
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High error rate detected on {{ $labels.domain }}"
+      description: "Triggering automated rollback for {{ $labels.domain }}."
+
+  - alert: HighLatency
+    expr: histogram_quantile(0.95, sum by (le, domain) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Latency baseline exceeded for {{ $labels.domain }}"

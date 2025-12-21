@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Mail, MapPin, Phone } from 'lucide-react'
+import { FacebookPagePlugin } from '@/components/social/FacebookPagePlugin'
 
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false)
@@ -20,12 +21,12 @@ export default function ContactPage() {
         
         {/* Contact Info */}
         <div>
-          <h1 className="text-4xl font-bold mb-6 text-gray-900">Get in Touch</h1>
+          <h1 className="text-4xl font-bold mb-6 text-gray-900">Let's Talk Business</h1>
           <p className="text-gray-600 mb-8">
-            Have questions about our hosting plans or AI video tools? Our team is here to help.
+            Ready to request a demo or need a custom infrastructure plan? Our team of experts is ready to help you scale.
           </p>
           
-          <div className="space-y-6">
+          <div className="space-y-6 mb-10">
             <div className="flex items-start gap-4">
               <Mail className="w-6 h-6 text-blue-600 mt-1" />
               <div>
@@ -47,6 +48,12 @@ export default function ContactPage() {
                 <p className="text-gray-600">Dhaka, Bangladesh</p>
               </div>
             </div>
+          </div>
+
+          {/* Social Widget */}
+          <div className="mt-8">
+            <h3 className="font-semibold text-gray-900 mb-4">Connect with us on Facebook</h3>
+            <FacebookPagePlugin href="https://www.facebook.com/share/17R9R19AyA/" />
           </div>
         </div>
 

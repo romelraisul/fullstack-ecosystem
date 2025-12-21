@@ -1,0 +1,973 @@
+agents:
+- id: research_1
+  name: Research Agent 1
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 1
+    model: gpt-4o-mini
+- id: research_2
+  name: Research Agent 2
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 2
+    model: gpt-4o-mini
+- id: research_3
+  name: Research Agent 3
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 3
+    model: gpt-4o-mini
+- id: research_4
+  name: Research Agent 4
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 4
+    model: gpt-4o-mini
+- id: research_5
+  name: Research Agent 5
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 5
+    model: gpt-4o-mini
+- id: research_6
+  name: Research Agent 6
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 6
+    model: gpt-4o-mini
+- id: research_7
+  name: Research Agent 7
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 7
+    model: gpt-4o-mini
+- id: research_8
+  name: Research Agent 8
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 8
+    model: gpt-4o-mini
+- id: research_9
+  name: Research Agent 9
+  category: research
+  capabilities:
+  - research
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized research agent number 9
+    model: gpt-4o-mini
+- id: coding_1
+  name: Coding Agent 1
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 1
+    model: gpt-4o-mini
+- id: coding_2
+  name: Coding Agent 2
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 2
+    model: gpt-4o-mini
+- id: coding_3
+  name: Coding Agent 3
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 3
+    model: gpt-4o-mini
+- id: coding_4
+  name: Coding Agent 4
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 4
+    model: gpt-4o-mini
+- id: coding_5
+  name: Coding Agent 5
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 5
+    model: gpt-4o-mini
+- id: coding_6
+  name: Coding Agent 6
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 6
+    model: gpt-4o-mini
+- id: coding_7
+  name: Coding Agent 7
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 7
+    model: gpt-4o-mini
+- id: coding_8
+  name: Coding Agent 8
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 8
+    model: gpt-4o-mini
+- id: coding_9
+  name: Coding Agent 9
+  category: coding
+  capabilities:
+  - coding
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized coding agent number 9
+    model: gpt-4o-mini
+- id: data_1
+  name: Data Agent 1
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 1
+    model: gpt-4o-mini
+- id: data_2
+  name: Data Agent 2
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 2
+    model: gpt-4o-mini
+- id: data_3
+  name: Data Agent 3
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 3
+    model: gpt-4o-mini
+- id: data_4
+  name: Data Agent 4
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 4
+    model: gpt-4o-mini
+- id: data_5
+  name: Data Agent 5
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 5
+    model: gpt-4o-mini
+- id: data_6
+  name: Data Agent 6
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 6
+    model: gpt-4o-mini
+- id: data_7
+  name: Data Agent 7
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 7
+    model: gpt-4o-mini
+- id: data_8
+  name: Data Agent 8
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 8
+    model: gpt-4o-mini
+- id: data_9
+  name: Data Agent 9
+  category: data
+  capabilities:
+  - data
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized data agent number 9
+    model: gpt-4o-mini
+- id: content_1
+  name: Content Agent 1
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 1
+    model: gpt-4o-mini
+- id: content_2
+  name: Content Agent 2
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 2
+    model: gpt-4o-mini
+- id: content_3
+  name: Content Agent 3
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 3
+    model: gpt-4o-mini
+- id: content_4
+  name: Content Agent 4
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 4
+    model: gpt-4o-mini
+- id: content_5
+  name: Content Agent 5
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 5
+    model: gpt-4o-mini
+- id: content_6
+  name: Content Agent 6
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 6
+    model: gpt-4o-mini
+- id: content_7
+  name: Content Agent 7
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 7
+    model: gpt-4o-mini
+- id: content_8
+  name: Content Agent 8
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 8
+    model: gpt-4o-mini
+- id: content_9
+  name: Content Agent 9
+  category: content
+  capabilities:
+  - content
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized content agent number 9
+    model: gpt-4o-mini
+- id: ops_1
+  name: Ops Agent 1
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 1
+    model: gpt-4o-mini
+- id: ops_2
+  name: Ops Agent 2
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 2
+    model: gpt-4o-mini
+- id: ops_3
+  name: Ops Agent 3
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 3
+    model: gpt-4o-mini
+- id: ops_4
+  name: Ops Agent 4
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 4
+    model: gpt-4o-mini
+- id: ops_5
+  name: Ops Agent 5
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 5
+    model: gpt-4o-mini
+- id: ops_6
+  name: Ops Agent 6
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 6
+    model: gpt-4o-mini
+- id: ops_7
+  name: Ops Agent 7
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 7
+    model: gpt-4o-mini
+- id: ops_8
+  name: Ops Agent 8
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 8
+    model: gpt-4o-mini
+- id: ops_9
+  name: Ops Agent 9
+  category: ops
+  capabilities:
+  - ops
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized ops agent number 9
+    model: gpt-4o-mini
+- id: architecture_1
+  name: Architecture Agent 1
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 1
+    model: gpt-4o-mini
+- id: architecture_2
+  name: Architecture Agent 2
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 2
+    model: gpt-4o-mini
+- id: architecture_3
+  name: Architecture Agent 3
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 3
+    model: gpt-4o-mini
+- id: architecture_4
+  name: Architecture Agent 4
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 4
+    model: gpt-4o-mini
+- id: architecture_5
+  name: Architecture Agent 5
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 5
+    model: gpt-4o-mini
+- id: architecture_6
+  name: Architecture Agent 6
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 6
+    model: gpt-4o-mini
+- id: architecture_7
+  name: Architecture Agent 7
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 7
+    model: gpt-4o-mini
+- id: architecture_8
+  name: Architecture Agent 8
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 8
+    model: gpt-4o-mini
+- id: architecture_9
+  name: Architecture Agent 9
+  category: architecture
+  capabilities:
+  - architecture
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized architecture agent number 9
+    model: gpt-4o-mini
+- id: business_1
+  name: Business Agent 1
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 1
+    model: gpt-4o-mini
+- id: business_2
+  name: Business Agent 2
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 2
+    model: gpt-4o-mini
+- id: business_3
+  name: Business Agent 3
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 3
+    model: gpt-4o-mini
+- id: business_4
+  name: Business Agent 4
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 4
+    model: gpt-4o-mini
+- id: business_5
+  name: Business Agent 5
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 5
+    model: gpt-4o-mini
+- id: business_6
+  name: Business Agent 6
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 6
+    model: gpt-4o-mini
+- id: business_7
+  name: Business Agent 7
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 7
+    model: gpt-4o-mini
+- id: business_8
+  name: Business Agent 8
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 8
+    model: gpt-4o-mini
+- id: business_9
+  name: Business Agent 9
+  category: business
+  capabilities:
+  - business
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized business agent number 9
+    model: gpt-4o-mini
+- id: legal_1
+  name: Legal Agent 1
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 1
+    model: gpt-4o-mini
+- id: legal_2
+  name: Legal Agent 2
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 2
+    model: gpt-4o-mini
+- id: legal_3
+  name: Legal Agent 3
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 3
+    model: gpt-4o-mini
+- id: legal_4
+  name: Legal Agent 4
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 4
+    model: gpt-4o-mini
+- id: legal_5
+  name: Legal Agent 5
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 5
+    model: gpt-4o-mini
+- id: legal_6
+  name: Legal Agent 6
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 6
+    model: gpt-4o-mini
+- id: legal_7
+  name: Legal Agent 7
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 7
+    model: gpt-4o-mini
+- id: legal_8
+  name: Legal Agent 8
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 8
+    model: gpt-4o-mini
+- id: legal_9
+  name: Legal Agent 9
+  category: legal
+  capabilities:
+  - legal
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized legal agent number 9
+    model: gpt-4o-mini
+- id: security_1
+  name: Security Agent 1
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 1
+    model: gpt-4o-mini
+- id: security_2
+  name: Security Agent 2
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 2
+    model: gpt-4o-mini
+- id: security_3
+  name: Security Agent 3
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 3
+    model: gpt-4o-mini
+- id: security_4
+  name: Security Agent 4
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 4
+    model: gpt-4o-mini
+- id: security_5
+  name: Security Agent 5
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 5
+    model: gpt-4o-mini
+- id: security_6
+  name: Security Agent 6
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 6
+    model: gpt-4o-mini
+- id: security_7
+  name: Security Agent 7
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 7
+    model: gpt-4o-mini
+- id: security_8
+  name: Security Agent 8
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 8
+    model: gpt-4o-mini
+- id: security_9
+  name: Security Agent 9
+  category: security
+  capabilities:
+  - security
+  - general_purpose
+  strategy: default
+  status: active
+  version: 1.0.0
+  metadata:
+    description: Specialized security agent number 9
+    model: gpt-4o-mini

@@ -8,12 +8,12 @@ echo "Updating GCP WireGuard Server Configuration"
 echo "==========================================="
 
 # New Windows client public key
-WINDOWS_CLIENT_PUBKEY="XTAAjnYgjnpLjpV9ZJ3a2Ke0n8o0jP4KYwfH1bXShHA="
+WINDOWS_CLIENT_PUBKEY="uxyYJY25iWos+IfkSH9Wc9v7lRGEEqrm2F4py5RdxAw="
 
-echo "Connecting to GCP server (34.47.163.149)..."
+echo "Connecting to GCP server (34.131.107.91)..."
 
 # SSH to GCP and update WireGuard config
-ssh -i ~/.ssh/id_rsa root@34.47.163.149 << 'ENDSSH'
+ssh -i ~/.ssh/id_rsa root@34.131.107.91 << 'ENDSSH'
 # Add Windows client peer to WireGuard
 wg set wg0 peer XTAAjnYgjnpLjpV9ZJ3a2Ke0n8o0jP4KYwfH1bXShHA= allowed-ips 10.10.0.2/32
 

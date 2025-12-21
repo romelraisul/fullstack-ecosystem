@@ -1,0 +1,55 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20251218020022
+Username: HOSTAMAR-COM\romel
+RunAs User: HOSTAMAR-COM\romel
+Configuration Name: 
+Machine: HOSTAMAR-COM (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\romel\OneDrive\Documents\aiauto\ai-agent\nightly_eval_wrapper.ps1
+Process ID: 19376
+PSVersion: 5.1.26100.7462
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7462
+BuildVersion: 10.0.26100.7462
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is G:\My Drive\Automations\ai-agent\logs\nightly_eval_2025-12-18_020022.log
+========================================
+Nightly AI Agent Evaluation
+Started: 2025-12-18 02:00:22
+========================================
+Hybrid Cloud Infrastructure Agent Runner
+Using venv Python: G:\My Drive\Automations\.venv\Scripts\python.exe
+Checking Python dependencies...
+Installing requirements (preview packages)...
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+Requirement already satisfied: pip in g:\my drive\automations\.venv\lib\site-packages (25.3)
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+WARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'ProtocolError('Connection aborted.', ConnectionResetError(10054, 'An existing conn
+ection was forcibly closed by the remote host', None, 10054, None))': /simple/pip/
+WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after conne
+ction broken by 'SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in viola
+tion of protocol (_ssl.c:1077)'))': /simple/pip/
+Could not fetch URL https://pypi.org/simple/pip/: There was a problem confirming the ssl certificat
+e: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/pip/ (Cau
+sed by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of pr
+otocol (_ssl.c:1077)'))) - skipping
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+WARNING: Ignoring invalid distribution ~ip (G:\My Drive\Automations\.venv\Lib\site-packages)
+Could not fetch URL https://pypi.org/simple/pip/: There was a problem confirming the ssl certificat
+e: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/pip/ (Cau
+sed by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of pr
+otocol (_ssl.c:1077)'))) - skipping

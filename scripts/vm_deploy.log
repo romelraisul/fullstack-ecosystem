@@ -1,0 +1,12 @@
+{"timestamp": "2025-12-15T18:36:25.699638", "level": "INFO", "message": "Deploying VM: hostamar-worker-20251215-100 (ID: 100) on pve", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:36:25.706616", "level": "INFO", "message": "Cloning from Template ID: 9000", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:36:25.711831", "level": "WARNING", "message": "Clone failed (attempt 1): 403 Forbidden: Permission check failed (/vms/9000, VM.Clone). Retrying in 1s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:36:26.820120", "level": "WARNING", "message": "Clone failed (attempt 2): 403 Forbidden: Permission check failed (/vms/9000, VM.Clone). Retrying in 2s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:36:28.886943", "level": "WARNING", "message": "Clone failed (attempt 3): 403 Forbidden: Permission check failed (/vms/9000, VM.Clone). Retrying in 4s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:36:32.890369", "level": "ERROR", "message": "Deployment Failed: Failed to clone VM after 3 attempts", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:07.154434", "level": "INFO", "message": "Deploying VM: hostamar-worker-20251215-104 (ID: 104) on pve", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:07.160456", "level": "INFO", "message": "Cloning from Template ID: 9000", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:07.167983", "level": "WARNING", "message": "Clone failed (attempt 1): 500 Internal Server Error: unable to find configuration file for VM 9000 on node 'pve'. Retrying in 1s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:08.219122", "level": "WARNING", "message": "Clone failed (attempt 2): 500 Internal Server Error: unable to find configuration file for VM 9000 on node 'pve'. Retrying in 2s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:10.267566", "level": "WARNING", "message": "Clone failed (attempt 3): 500 Internal Server Error: unable to find configuration file for VM 9000 on node 'pve'. Retrying in 4s...", "module": "vm_deploy"}
+{"timestamp": "2025-12-15T18:40:14.269910", "level": "ERROR", "message": "Deployment Failed: Failed to clone VM after 3 attempts", "module": "vm_deploy"}

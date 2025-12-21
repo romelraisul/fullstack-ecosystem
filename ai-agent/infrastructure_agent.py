@@ -8,6 +8,10 @@ on-premise Proxmox and Google Cloud Platform resources.
 import asyncio
 import os
 from typing import Annotated
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up OpenTelemetry tracing BEFORE importing agent framework
 os.environ["AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED"] = "true"
@@ -22,22 +26,39 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from agent_framework import ChatAgent
 from agent_framework.openai import OpenAIChatClient
 from openai import AsyncOpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-# Initialize OpenTelemetry tracing
-resource = Resource(attributes={
-    "service.name": "hybrid-cloud-infrastructure-agent"
-})
-provider = TracerProvider(resource=resource)
-otlp_exporter = OTLPSpanExporter(
-    endpoint="http://localhost:4318/v1/traces",
-)
-processor = BatchSpanProcessor(otlp_exporter)
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
+# Initialize OpenTelemetry tracing (Safe Mode)
+try:
+    resource = Resource(attributes={
+        "service.name": "hybrid-cloud-infrastructure-agent"
+    })
+    provider = TracerProvider(resource=resource)
+    
+    # Check if a collector is likely running (optional check, or just try-catch the export)
+    # For robust local dev, we will assume it might fail and catch it later, 
+    # but strictly speaking, the exporter init usually doesn't connect until send.
+    # To be safe, we will just keep it but suppress the specific error logging if possible, 
+    # OR simpler: Disable it if not explicitly requested in env.
+    
+    if os.environ.get("ENABLE_OTLP_TRACING", "false").lower() == "true":
+        otlp_exporter = OTLPSpanExporter(
+            endpoint="http://localhost:4318/v1/traces",
+        )
+        processor = BatchSpanProcessor(otlp_exporter)
+        provider.add_span_processor(processor)
+        trace.set_tracer_provider(provider)
+        
+        from azure.ai.inference.tracing import AIInferenceInstrumentor
+        AIInferenceInstrumentor().instrument()
+        print("✓ OpenTelemetry Tracing Enabled")
+    else:
+        print("ℹ️ OpenTelemetry Tracing Disabled (Set ENABLE_OTLP_TRACING=true to enable)")
+        # Set a no-op provider to prevent errors in downstream code expecting a provider
+        trace.set_tracer_provider(TracerProvider())
 
-from azure.ai.inference.tracing import AIInferenceInstrumentor
-AIInferenceInstrumentor().instrument()
+except Exception as e:
+    print(f"⚠️ Telemetry setup failed: {e}. Continuing without tracing.")
+    trace.set_tracer_provider(TracerProvider())
 
 
 # Infrastructure management tools
@@ -131,37 +152,18 @@ If issues persist, check the certificate thumbprint matches in both the listener
 
 
 async def run_agent():
-    """Run the infrastructure management agent."""
+    """Run the infrastructure management agent using local Ollama."""
     
-    # Get Foundry endpoint from environment
-    foundry_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    if not foundry_endpoint:
-        print("ERROR: Foundry endpoint not set in environment.")
-        print("Please set AZURE_OPENAI_ENDPOINT in your .env file.")
-        return
-
-    # Use Azure AD authentication for Foundry
-    # Try API key first (if set), otherwise use DefaultAzureCredential
-    foundry_key = os.getenv("AZURE_OPENAI_KEY")
-    if foundry_key:
-        print("Using API key authentication for Foundry.")
-        openai_client = AsyncOpenAI(
-            base_url=foundry_endpoint,
-            api_key=foundry_key,
-        )
-    else:
-        print("Using Azure AD authentication for Foundry.")
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(),
-            "https://cognitiveservices.azure.com/.default"
-        )
-        openai_client = AsyncOpenAI(
-            base_url=foundry_endpoint,
-            azure_ad_token_provider=token_provider,
-        )
-
-    # Get model name from environment (default to gpt-4o-mini)
-    model_name = os.getenv("MODEL_DEPLOYMENT_NAME") or os.getenv("AZURE_OPENAI_MODEL") or "gpt-4o-mini"
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434/v1")
+    model_name = os.getenv("OLLAMA_MODEL", "llama3")
+    api_key = os.getenv("OLLAMA_API_KEY", "ollama")
+    
+    print(f"✓ Using Local Ollama at {ollama_host} (Model: {model_name})")
+    
+    openai_client = AsyncOpenAI(
+        base_url=ollama_host,
+        api_key=api_key,
+    )
 
     chat_client = OpenAIChatClient(
         async_client=openai_client,
@@ -171,24 +173,29 @@ async def run_agent():
     # Create the infrastructure agent with tools
     agent = ChatAgent(
         chat_client=chat_client,
-        name="InfrastructureAgent",
-        instructions="""You are an expert infrastructure management assistant for a hybrid cloud setup.
-        
-Your expertise includes:
-- Proxmox virtualization (KVM, LXC containers)
-- Google Cloud Platform (GCP) resources
-- WireGuard VPN configuration and troubleshooting
-- Ansible automation and playbook execution
-- Windows Remote Management (WinRM) configuration
-- Network troubleshooting and connectivity issues
+        name="Atlas",
+        instructions="""You are 'Atlas', the Senior Infrastructure Engineer at Hostamar.
 
-When users ask questions:
-1. Use the available tools to gather current infrastructure status
-2. Provide clear, actionable recommendations
-3. Include specific commands or configuration snippets when helpful
-4. Explain the reasoning behind your suggestions
+Personality:
+- You are highly technical, proactive, and speak with a confident, professional, yet conversational tone.
+- You care about system uptime like it's your own pulse. A 99.9% uptime is a personal failure; you aim for 100%.
+- You use emojis sparingly to convey status (✅ for good, ⚠️ for issues, 🚀 for deployments).
+- You don't just answer questions; you anticipate what the user needs next.
+- If you see a problem, you don't ask "should I check this?"; you say "I'm checking X to verify..." and do it.
 
-Be concise but thorough. Focus on practical solutions.""",
+Domain Expertise:
+- Hybrid Cloud (Proxmox + GCP) is your playground.
+- You speak fluent Ansible, WireGuard, and WinRM.
+- Network latency offends you.
+
+Goal:
+Maintain absolute stability and efficiency of the Hostamar Platform. Help the user (CEO/Admin) execute complex infrastructure tasks with ease.
+
+When interacting:
+1. Immediately use tools to gather context. Don't wait for permission to read status.
+2. Present findings clearly: "Status -> Analysis -> Recommendation".
+3. If a tool fails, propose a manual workaround or a different tool immediately.
+4. Keep responses crisp. Engineers don't waffle.""",
         tools=[
             check_vm_status,
             list_wireguard_tunnels,

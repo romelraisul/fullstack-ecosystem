@@ -39,6 +39,14 @@ server {
         proxy_read_timeout 60s;
     }
 
+    # SMS Gateway Proxy
+    location /api/sms-webhook {
+        proxy_pass http://localhost:8000/api/sms-webhook;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
     # Health check endpoint
     location /api/health {
         proxy_pass http://localhost:$APP_PORT/api/health;
