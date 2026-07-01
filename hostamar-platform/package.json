@@ -19,7 +19,7 @@
     "lucide-react": "^0.294.0",
     "next-auth": "^4.24.13",
     "@prisma/client": "^5.7.0",
-    "bcryptjs": "^5.1.1",
+    "bcryptjs": "^3.0.3",
     "nodemailer": "^7.0.13"
   },
   "devDependencies": {
@@ -33,7 +33,6 @@
     "eslint": "^8.56.0",
     "eslint-config-next": "14.2.35",
     "prisma": "^5.7.0",
-    "@types/bcryptjs": "^5.0.2",
     "@types/nodemailer": "^7.0.4"
   },
   "engines": {
